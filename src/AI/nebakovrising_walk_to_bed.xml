@@ -6,6 +6,12 @@
             <Variable name="bedWuid" type="_wuid" values="" isPersistent="0" form="single" />
             <Variable name="bedEnabled" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="hasBed" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="hasMealSource" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="mealPos" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="mealWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="mealBowlWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="hasMealBowl" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="isHomeFireplace" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="sleepWindow" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
         <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
@@ -78,6 +84,7 @@
                                         <EntityContextPresetElement contextPreset="sleeping" enabled="true">
                                             <Sequence>
                                                 <WaitAction />
+                                                <Wait duration="&apos;200ms&apos;" timeType="GameTime" doFail="false" variation="" />
                                                 <ExecuteLua code="System.LogAlways('[nebakovrising] Bed lying enter action completed in sleeping context')" />
                                                 <ExecuteLua code="
                                                     local castle = nebakovrising and nebakovrising.CastleUtils
@@ -96,33 +103,139 @@
                                                             and castle.IsNpcSleepTime() == true
                                                         or false
                                                         if not data.sleepWindow and castle then
-                                                            castle.SetBedWalkState(entity.this.id, 'idle')
+                                                            castle.SetBedWalkState(entity.this.id, 'waking')
                                                             System.LogAlways('[nebakovrising] NPC waking up; sleep schedule ended')
                                                         end
                                                     " />
                                                     </Sequence>
                                                 </While>
-                                                <ExecuteLua code="
-                                                    if AI and type(AI.SetStance) == 'function'
-                                                        and E_ACTORSTANCE_NORMAL ~= nil then
-                                                        local ok, err = pcall(
-                                                            AI.SetStance,
-                                                            entity.id,
-                                                            E_ACTORSTANCE_NORMAL
-                                                        )
-                                                        if not ok then
-                                                            System.LogAlways('[nebakovrising] NPC standing stance restore failed: '
-                                                                .. tostring(err))
-                                                        end
-                                                    end
-                                                    local castle = nebakovrising and nebakovrising.CastleUtils
-                                                    if castle then
-                                                        castle.SetBedWalkState(entity.this.id, 'idle')
-                                                    end
-                                                " />
                                             </Sequence>
                                         </EntityContextPresetElement>
                                     </AddBuffElement>
+                                </StanceElement>
+                                <WaitAction />
+                                <ExecuteLua code="
+                                    if AI and type(AI.SetStance) == 'function'
+                                        and E_ACTORSTANCE_NORMAL ~= nil then
+                                        local ok, result = pcall(
+                                            AI.SetStance,
+                                            entity.id,
+                                            E_ACTORSTANCE_NORMAL
+                                        )
+                                        System.LogAlways('[nebakovrising] Bed stance released; normal stance request ok='
+                                            .. tostring(ok) .. ', result=' .. tostring(result))
+                                        if not ok then
+                                            System.LogAlways('[nebakovrising] Bed stance release failed: '
+                                                .. tostring(result))
+                                        end
+                                    else
+                                        System.LogAlways('[nebakovrising] Bed stance release skipped: AI.SetStance or normal stance constant unavailable')
+                                    end
+                                " />
+                                <AnimationAction fragment="&apos;GuardWakeup&apos;" tags="" eventReferenceObject="" alignObject="" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
+                                <StanceElement smartObject="" stance="standing" allowAny="true" enabled="true">
+                                <Sequence>
+                                    <ExecuteLua code="
+                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                        if castle and castle.EquipSleepingEquipment then
+                                            local ok, equipped = pcall(
+                                                castle.EquipSleepingEquipment,
+                                                entity
+                                            )
+                                            if not ok or not equipped then
+                                                System.LogAlways('[nebakovrising] Uyanma sonrasi ekipman geri kusanilamadi: '
+                                                    .. tostring(equipped))
+                                            end
+                                        end
+
+                                        data.hasMealSource = false
+                                        if castle and castle.GetMealFireplace then
+                                            local ok, fireplace, wuid, position = pcall(
+                                                castle.GetMealFireplace
+                                            )
+                                            if ok and fireplace and wuid and position then
+                                                data.mealWuid = wuid
+                                                data.mealPos.x = position.x
+                                                data.mealPos.y = position.y
+                                                data.mealPos.z = position.z
+                                                data.hasMealSource = true
+                                                castle.SetBedWalkState(entity.this.id, 'walking_to_cauldron')
+                                                castle.SetMealProgress(entity, 'walking_to_cauldron')
+                                                System.LogAlways('[nebakovrising] NPC kahvalti fireplace hedefi bulundu: '
+                                                    .. tostring(wuid))
+                                            else
+                                                System.LogAlways('[nebakovrising] NPC kahvalti fireplace hedefi kullanilamiyor: '
+                                                    .. tostring(ok and 'WUID/konum eksik' or fireplace))
+                                            end
+                                        end
+                                    " />
+                                    <IfCondition failOnCondition="false" condition="$hasMealSource">
+                                        <Sequence>
+                                            <ExecuteLua code="System.LogAlways('[nebakovrising] NPC kazana yuruyor')" />
+                                            <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                                <Move stopWithinDistance="0.800000" stopDistanceVariation="0.200000" rayCasteFlee="false" successDistance="0.000000" changeNPCState="false" fastForwardIncludesMove="false" destinationSpecification="$mealPos" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                            </MoveParamsDecorator>
+                                            <ExecuteLua code="System.LogAlways('[nebakovrising] NPC kazana ulasti; vanilla getMash davranisi baslatiliyor')" />
+                                            <ExecuteLua code="
+                                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                                if castle then
+                                                    data.mealBowlWuid = castle.EnsureNpcHasMealBowl(entity.this.id)
+                                                    data.hasMealBowl = data.mealBowlWuid ~= nil
+                                                        and data.mealBowlWuid ~= false
+                                                    castle.SetBedWalkState(entity.this.id, 'meal_pending')
+                                                    castle.SetMealProgress(entity, 'meal_pending')
+                                                end
+                                            " />
+                                            <IfCondition failOnCondition="false" condition="$hasMealBowl">
+                                                <AddLink From="$mealWuid" To="$mealBowlWuid" Tag="&apos;bowlSlots&apos;" Data="" LinkOpHandleMode="OverWrite" />
+                                            </IfCondition>
+                                            <ExecuteLua code="System.LogAlways('[nebakovrising] NPC kazani gecici olarak dolduruyor')" />
+                                            <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onCooking&apos;" values="" />
+                                            <Wait duration="&apos;500ms&apos;" timeType="GameTime" doFail="false" variation="" />
+                                            <ExecuteLua code="
+                                                local fireplace = XGenAIModule.GetEntityByWUID(data.mealWuid)
+                                                data.isHomeFireplace = EntityUtils.GetScriptProperty(
+                                                    fireplace,
+                                                    'isHomeFireplace'
+                                                )
+                                            " />
+                                            <HandContentElement hand="Left" item="$mealBowlWuid" allowAny="false" useDecision="false" enabled="true" saveVersion="2">
+                                                <Search canSkip="1">
+                                                    <Success />
+                                                </Search>
+                                                <Exec canSkip="1">
+                                                    <Sequence>
+                                                        <Parallel successMode="Any" failureMode="Any">
+                                                            <Sequence>
+                                                                <DistanceGate Origin="$mealWuid" ReferencePt="$this.id" Low="5.000000" High="4000.000000" Negation="false" OpenInMiddle="false" RunLogic="KeepRunning">
+                                                                    <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onFireplacePhaseChange&apos;" values="state($enum:kettleFireState.on)" />
+                                                                </DistanceGate>
+                                                                <Wait duration="&apos;-1&apos;" timeType="GameTime" doFail="false" variation="" skipInLOD="false" />
+                                                            </Sequence>
+                                                            <IfElseCondition failOnCondition="false" condition="$isHomeFireplace" saveVersion="2">
+                                                                <Then canSkip="1">
+                                                                    <AnimationAction fragment="&apos;GetMash&apos;" tags="" eventReferenceObject="$mealWuid" alignObject="$mealWuid" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
+                                                                </Then>
+                                                                <Else canSkip="1">
+                                                                    <AnimationAction fragment="&apos;CookingScoopToBowl&apos;" tags="" eventReferenceObject="$mealWuid" alignObject="$mealWuid" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
+                                                                </Else>
+                                                            </IfElseCondition>
+                                                        </Parallel>
+                                                        <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onBowlFilled&apos;" values="bowl($mealBowlWuid)" />
+                                                    </Sequence>
+                                                </Exec>
+                                            </HandContentElement>
+                                            <ExecuteLua code="
+                                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                                if castle then
+                                                    castle.SetBedWalkState(entity.this.id, 'meal_ready')
+                                                    castle.SetMealProgress(entity, 'meal_ready')
+                                                end
+                                                System.LogAlways('[nebakovrising] NPC kasesi kazan animasyonuyla dolduruldu; masaya gidebilir')
+                                            " />
+                                        </Sequence>
+                                    </IfCondition>
+                                </Sequence>
                                 </StanceElement>
                                 </Sequence>
                                 </IfCondition>
@@ -132,7 +245,11 @@
                             <ExecuteLua code="
                                 local castle = nebakovrising and nebakovrising.CastleUtils
                                 if castle then
-                                    castle.MarkBedWalkInterrupted(entity.this.id)
+                                    if castle.GetMealProgress(entity) == 'meal_pending' then
+                                        castle.SetBedWalkState(entity.this.id, 'meal_retry_wait')
+                                    else
+                                        castle.MarkBedWalkInterrupted(entity.this.id)
+                                    end
                                 end
                                 System.LogAlways('[nebakovrising] Bed-walk/sleep behavior ended; scheduler will retry at bedtime')
                             " />
@@ -141,5 +258,376 @@
                 </EntityContext>
             </Behavior>
         </Root>
+    </BehaviorTree>
+    <BehaviorTree name="nebakovrising_resume_meal_walk" is_function="0">
+        <Variables>
+            <Variable name="hasMealSource" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="mealPos" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="mealWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="mealBowlWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="hasMealBowl" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="isHomeFireplace" type="_bool" values="false" isPersistent="0" form="single" />
+        </Variables>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <FuseBox StatusPropagation="Child" OneCleanup="true" saveVersion="2">
+                    <Child canSkip="1">
+                        <Sequence>
+                            <ExecuteLua code="
+                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                local fireplace, wuid, position
+                                if castle and castle.GetMealFireplace then
+                                    fireplace, wuid, position = castle.GetMealFireplace()
+                                end
+                                data.hasMealSource = fireplace ~= nil and wuid ~= nil and position ~= nil
+                                if data.hasMealSource then
+                                    data.mealWuid = wuid
+                                    data.mealPos.x = position.x
+                                    data.mealPos.y = position.y
+                                    data.mealPos.z = position.z
+                                    System.LogAlways('[nebakovrising] Save-load: NPC kazana kaldigi yerden yuruyor')
+                                else
+                                    System.LogAlways('[nebakovrising] Save-load: kazan hedefi bulunamadi; yuruyus surdurulemiyor')
+                                end
+                            " />
+                            <IfCondition failOnCondition="true" condition="$hasMealSource">
+                                <Sequence>
+                                    <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                        <Move stopWithinDistance="0.800000" stopDistanceVariation="0.200000" rayCasteFlee="false" successDistance="0.000000" changeNPCState="false" fastForwardIncludesMove="false" destinationSpecification="$mealPos" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                    </MoveParamsDecorator>
+                                    <ExecuteLua code="
+                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                        if castle then
+                                            data.mealBowlWuid = castle.EnsureNpcHasMealBowl(entity.this.id)
+                                            data.hasMealBowl = data.mealBowlWuid ~= nil
+                                                and data.mealBowlWuid ~= false
+                                            castle.SetBedWalkState(entity.this.id, 'meal_pending')
+                                            castle.SetMealProgress(entity, 'meal_pending')
+                                        end
+                                        System.LogAlways('[nebakovrising] Save-load: NPC kazana ulasti; vanilla getMash davranisi yeniden baslatiliyor')
+                                    " />
+                                    <IfCondition failOnCondition="false" condition="$hasMealBowl">
+                                        <AddLink From="$mealWuid" To="$mealBowlWuid" Tag="&apos;bowlSlots&apos;" Data="" LinkOpHandleMode="OverWrite" />
+                                    </IfCondition>
+                                    <ExecuteLua code="System.LogAlways('[nebakovrising] Save-load: NPC kazanini gecici olarak dolduruyor')" />
+                                    <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onCooking&apos;" values="" />
+                                    <Wait duration="&apos;500ms&apos;" timeType="GameTime" doFail="false" variation="" />
+                                    <ExecuteLua code="
+                                        local fireplace = XGenAIModule.GetEntityByWUID(data.mealWuid)
+                                        data.isHomeFireplace = EntityUtils.GetScriptProperty(
+                                            fireplace,
+                                            'isHomeFireplace'
+                                        )
+                                    " />
+                                    <HandContentElement hand="Left" item="$mealBowlWuid" allowAny="false" useDecision="false" enabled="true" saveVersion="2">
+                                        <Search canSkip="1">
+                                            <Success />
+                                        </Search>
+                                        <Exec canSkip="1">
+                                            <Sequence>
+                                                <Parallel successMode="Any" failureMode="Any">
+                                                    <Sequence>
+                                                        <DistanceGate Origin="$mealWuid" ReferencePt="$this.id" Low="5.000000" High="4000.000000" Negation="false" OpenInMiddle="false" RunLogic="KeepRunning">
+                                                            <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onFireplacePhaseChange&apos;" values="state($enum:kettleFireState.on)" />
+                                                        </DistanceGate>
+                                                        <Wait duration="&apos;-1&apos;" timeType="GameTime" doFail="false" variation="" skipInLOD="false" />
+                                                    </Sequence>
+                                                    <IfElseCondition failOnCondition="false" condition="$isHomeFireplace" saveVersion="2">
+                                                        <Then canSkip="1">
+                                                            <AnimationAction fragment="&apos;GetMash&apos;" tags="" eventReferenceObject="$mealWuid" alignObject="$mealWuid" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
+                                                        </Then>
+                                                        <Else canSkip="1">
+                                                            <AnimationAction fragment="&apos;CookingScoopToBowl&apos;" tags="" eventReferenceObject="$mealWuid" alignObject="$mealWuid" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
+                                                        </Else>
+                                                    </IfElseCondition>
+                                                </Parallel>
+                                                <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onBowlFilled&apos;" values="bowl($mealBowlWuid)" />
+                                            </Sequence>
+                                        </Exec>
+                                    </HandContentElement>
+                                    <ExecuteLua code="
+                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                        if castle then
+                                            castle.SetBedWalkState(entity.this.id, 'meal_ready')
+                                            castle.SetMealProgress(entity, 'meal_ready')
+                                        end
+                                        System.LogAlways('[nebakovrising] Save-load: NPC kasesi dolduruldu; masaya gidebilir')
+                                    " />
+                                </Sequence>
+                            </IfCondition>
+                        </Sequence>
+                    </Child>
+                    <OnFail canSkip="1">
+                        <ExecuteLua code="
+                            local castle = nebakovrising and nebakovrising.CastleUtils
+                            if castle then
+                                if castle.GetMealProgress(entity) == 'meal_pending' then
+                                    castle.SetBedWalkState(entity.this.id, 'meal_retry_wait')
+                                else
+                                    castle.MarkBedWalkInterrupted(entity.this.id)
+                                end
+                            end
+                            System.LogAlways('[nebakovrising] Save-load kazan toplama davranisi basarisiz; retry beklemesine alindi')
+                        " />
+                    </OnFail>
+                </FuseBox>
+            </Behavior>
+        </Root>
+        <ForestContainer />
+        <EditorData EventSet="">
+            <Variables />
+            <ForwardDeclarations />
+            <Root hasInputBreakpoint="0" comment="" breakpointFlags="0" saveVersion="2">
+                <OutputBreakpoints />
+                <Behavior />
+                <Forest />
+                <Comments />
+            </Root>
+        </EditorData>
+    </BehaviorTree>
+    <BehaviorTree name="nebakovrising_eat_at_table" is_function="0">
+        <Variables>
+            <Variable name="hasMealTargets" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="mealBenchPos" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="mealBenchWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="mealWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="item" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="mealPhase" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="mealElapsed" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="mealEatDuration" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="mealSeatAcquired" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="mealSeatTimedOut" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="mealSeatWaitTicks" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="mealBowlWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="hasMealBowl" type="_bool" values="false" isPersistent="0" form="single" />
+        </Variables>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <FuseBox StatusPropagation="Child" OneCleanup="true" saveVersion="2">
+                    <Child canSkip="1">
+                    <Sequence>
+                    <ExecuteLua code="
+                        local castle = nebakovrising and nebakovrising.CastleUtils
+                        local fireplace, fireplaceWuid, bench, benchWuid, benchPosition
+                        if castle then
+                            fireplace, fireplaceWuid = castle.GetMealFireplace()
+                            bench, benchWuid, benchPosition = castle.GetMealBench(entity.this.id)
+                        end
+                        data.hasMealTargets = fireplace ~= nil and fireplaceWuid ~= nil
+                            and bench ~= nil and benchWuid ~= nil and benchPosition ~= nil
+                        if data.hasMealTargets then
+                            data.mealPhase = 1
+                            data.mealBowlWuid = castle.EnsureNpcHasMealBowl(entity.this.id)
+                            data.hasMealBowl = data.mealBowlWuid ~= nil
+                                and data.mealBowlWuid ~= false
+                            data.mealWuid = fireplaceWuid
+                            data.mealBenchWuid = benchWuid
+                            data.mealBenchPos.x = benchPosition.x
+                            data.mealBenchPos.y = benchPosition.y
+                            data.mealBenchPos.z = benchPosition.z
+                            System.LogAlways('[nebakovrising] NPC kahvalti masasi ve kazan hedefleri hazir; bench='
+                                .. tostring(benchWuid))
+                        else
+                            System.LogAlways('[nebakovrising] NPC kahvalti davranisi baslatilamadi: masa veya kazan hedefi eksik')
+                        end
+                    " />
+                    <IfCondition failOnCondition="true" condition="$hasMealTargets">
+                        <Sequence>
+                            <ExecuteLua code="
+                                data.mealPhase = 2
+                                System.LogAlways('[nebakovrising] NPC oturma davranisi baslatiliyor; bench='
+                                    .. tostring(data.mealBenchWuid)
+                                    .. '; bowl='
+                                    .. tostring(data.mealBowlWuid))
+                            " />
+                            <IfCondition failOnCondition="false" condition="$hasMealBowl">
+                                <AddLink From="$mealWuid" To="$mealBowlWuid" Tag="&apos;bowlSlots&apos;" Data="" LinkOpHandleMode="OverWrite" />
+                            </IfCondition>
+                            <HandContentElement hand="Left" item="$mealBowlWuid" allowAny="false" allowHomeSlotAutoReturn="false" useDecision="false" enabled="true" saveVersion="2">
+                                <Search canSkip="1">
+                                    <Success />
+                                </Search>
+                                <Exec canSkip="1">
+                                    <Sequence>
+                                        <ExecuteLua code="
+                                            data.mealSeatAcquired = false
+                                            data.mealSeatTimedOut = false
+                                            data.mealSeatWaitTicks = 0
+                                        " />
+                                        <Parallel successMode="Any" failureMode="Any">
+                                            <Sequence>
+                                                <StanceElement smartObject="$mealBenchWuid" stance="sitting" allowAny="false" enabled="true">
+                                                    <Sequence>
+                                                        <WaitAction />
+                                                        <ExecuteLua code="
+                                                            data.mealSeatAcquired = true
+                                                            data.mealPhase = 3
+                                                            System.LogAlways('[nebakovrising] NPC assigned meal bench stance acquired')
+                                                        " />
+                                                        <ExecuteLua code="
+                                                            data.mealPhase = 4
+                                                            local soul = entity and entity.soul
+                                                            local ok, hunger = false, 'unavailable'
+                                                            if soul and type(soul.GetState) == 'function' then
+                                                                ok, hunger = pcall(soul.GetState, soul, 'hunger')
+                                                            end
+                                                            System.LogAlways('[nebakovrising] NPC masada kaseyle yemeye basliyor; hunger='
+                                                                .. tostring(ok and hunger or 'unavailable: ' .. tostring(hunger)))
+                                                        " />
+                                                        <AddLinkElement from="$mealBenchWuid" to="$this.id" tag="&apos;benchOccupant&apos;" data="" enabled="true">
+                                                            <AddLinkElement from="$this.id" to="$mealBenchWuid" tag="&apos;bench&apos;" data="" enabled="true">
+                                                                <UrgencyDecorator Urgency="Slow">
+                                                                    <UnstanceAction unstance="housekeeper_eat" locationObject="" slaveObject="">
+                                                                        <EventData_spawnitem ItemClassId="&apos;30b2916b-37be-4d62-ad7f-2389b137fd59&apos;" name="&apos;spawnItem&apos;" />
+                                                                    </UnstanceAction>
+                                                                </UrgencyDecorator>
+                                                            </AddLinkElement>
+                                                        </AddLinkElement>
+                                                        <ExecuteLua code="
+                                                            data.mealPhase = 5
+                                                            data.mealElapsed = 0
+                                                            data.mealEatDuration = math.random(10, 20)
+                                                            System.LogAlways('[nebakovrising] NPC oturarak yeme animasyonuna girdi; sure='
+                                                                .. tostring(data.mealEatDuration) .. 's')
+                                                        " />
+                                                        <While doFail="false" propagateChildFail="false" condition="$mealElapsed &lt; $mealEatDuration">
+                                                            <Sequence>
+                                                                <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                <ExecuteLua code="
+                                                                    data.mealElapsed = data.mealElapsed + 1
+                                                                    local soul = entity and entity.soul
+                                                                    local ok, nourishment = false, nil
+                                                                    if soul and type(soul.GetState) == 'function' then
+                                                                        ok, nourishment = pcall(soul.GetState, soul, 'hunger')
+                                                                    end
+                                                                    System.LogAlways('[nebakovrising] NPC nourishment; entity='
+                                                                        .. tostring(entity.this.id)
+                                                                        .. '; deger='
+                                                                        .. tostring(ok and nourishment or 'unavailable: ' .. tostring(nourishment))
+                                                                        .. '; yemekSuresi=' .. tostring(data.mealElapsed)
+                                                                        .. '/' .. tostring(data.mealEatDuration) .. 's')
+                                                                    if data.mealElapsed >= data.mealEatDuration then
+                                                                        data.mealPhase = 6
+                                                                        System.LogAlways('[nebakovrising] NPC yemek suresi doldu; masadan kalkiyor')
+                                                                    end
+                                                                " />
+                                                            </Sequence>
+                                                        </While>
+                                                        <InstantSendMessageToNPC target="$mealWuid" type="&apos;kettle:signal:onNPCEating&apos;" values="user($this.id),bowl($mealBowlWuid)" />
+                                                        <Wait duration="&apos;500ms&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                        <ExecuteLua code="
+                                                            local soul = entity and entity.soul
+                                                            local ok, hunger = false, 'unavailable'
+                                                            if soul and type(soul.GetState) == 'function' then
+                                                                ok, hunger = pcall(soul.GetState, soul, 'hunger')
+                                                            end
+                                                            System.LogAlways('[nebakovrising] NPC yemegi bitirdi; hunger='
+                                                                .. tostring(ok and hunger or 'unavailable: ' .. tostring(hunger)))
+                                                        " />
+                                                    </Sequence>
+                                                </StanceElement>
+                                            </Sequence>
+                                            <Sequence>
+                                                <While doFail="false" propagateChildFail="false" condition="$mealSeatAcquired == false &amp; $mealSeatWaitTicks &lt; 5">
+                                                    <Sequence>
+                                                        <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                        <ExecuteLua code="
+                                                            data.mealSeatWaitTicks = data.mealSeatWaitTicks + 1
+                                                            if data.mealSeatWaitTicks >= 5 and not data.mealSeatAcquired then
+                                                                data.mealSeatTimedOut = true
+                                                                System.LogAlways('[nebakovrising] NPC assigned bench seating timed out; bench='
+                                                                    .. tostring(data.mealBenchWuid)
+                                                                    .. '; trying another bench')
+                                                            end
+                                                        " />
+                                                    </Sequence>
+                                                </While>
+                                                <IfCondition failOnCondition="false" condition="$mealSeatAcquired">
+                                                    <Wait duration="&apos;-1&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                </IfCondition>
+                                                <Fail />
+                                            </Sequence>
+                                        </Parallel>
+                                    </Sequence>
+                                </Exec>
+                            </HandContentElement>
+                            <ExecuteLua code="
+                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                if castle then
+                                    castle.ReleaseMealBenchForNpc(entity.this.id)
+                                    castle.SetBedWalkState(entity.this.id, 'idle')
+                                    castle.SetMealProgress(entity, nil)
+                                end
+                            " />
+                        </Sequence>
+                    </IfCondition>
+                    </Sequence>
+                    </Child>
+                    <OnFail canSkip="1">
+                        <Sequence>
+                            <IfCondition failOnCondition="false" condition="$mealSeatTimedOut">
+                                <ExecuteLua code="
+                                    local castle = nebakovrising and nebakovrising.CastleUtils
+                                    if castle then
+                                        castle.RetryMealBench(entity.this.id)
+                                        castle.SetBedWalkState(entity.this.id, 'meal_retry_wait')
+                                    end
+                                    System.LogAlways('[nebakovrising] NPC oturma zaman asimi sonrasi baska bench icin yeniden denenecek')
+                                " />
+                            </IfCondition>
+                            <IfCondition failOnCondition="false" condition="$mealPhase == 6">
+                                <Sequence>
+                                    <ExecuteLua code="
+                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                        if castle then
+                                            castle.ReleaseMealBenchForNpc(entity.this.id)
+                                            castle.SetBedWalkState(entity.this.id, 'idle')
+                                            castle.SetMealProgress(entity, nil)
+                                        end
+                                        System.LogAlways('[nebakovrising] NPC yemek davranisi tamamlandi; ayaga kalkma stance\'i baslatiliyor')
+                                    " />
+                                    <StanceElement smartObject="" stance="standing" allowAny="true" enabled="true">
+                                        <WaitAction />
+                                    </StanceElement>
+                                </Sequence>
+                            </IfCondition>
+                            <IfCondition failOnCondition="false" condition="$mealPhase &lt; 6 &amp; $mealSeatTimedOut == false">
+                                <ExecuteLua code="
+                                    local castle = nebakovrising and nebakovrising.CastleUtils
+                                    if castle then
+                                        castle.EnsureNpcHasMealBowl(entity.this.id)
+                                        castle.SetBedWalkState(entity.this.id, 'meal_retry_wait')
+                                    end
+                                    System.LogAlways('[nebakovrising] NPC oturma/yemek davranisi basarisiz; masada yeniden denenecek; phase='
+                                        .. tostring(data.mealPhase)
+                                        .. '; kazan toplama tekrarlanmayacak')
+                                " />
+                            </IfCondition>
+                        </Sequence>
+                    </OnFail>
+                </FuseBox>
+            </Behavior>
+        </Root>
+        <ForestContainer>
+        </ForestContainer>
+        <EditorData EventSet="">
+            <Variables>
+                <Variable name="mealPhase" comment="" />
+                <Variable name="mealElapsed" comment="" />
+                <Variable name="mealEatDuration" comment="" />
+                <Variable name="mealSeatAcquired" comment="" />
+                <Variable name="mealSeatTimedOut" comment="" />
+                <Variable name="mealSeatWaitTicks" comment="" />
+                <Variable name="mealBowlWuid" comment="" />
+                <Variable name="hasMealBowl" comment="" />
+            </Variables>
+            <ForwardDeclarations />
+            <Root hasInputBreakpoint="0" comment="" breakpointFlags="0" saveVersion="2">
+                <OutputBreakpoints />
+                <Behavior />
+                <Forest />
+                <Comments />
+            </Root>
+        </EditorData>
     </BehaviorTree>
 </BehaviorTrees>

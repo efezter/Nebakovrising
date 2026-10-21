@@ -337,6 +337,91 @@ function Spawner.RetryGuardWeaponDrawContext(userData)
     end
 end
 
+local function reequipPreservedPlayerItems(entity, entityName, preservedClasses)
+    if type(preservedClasses) ~= "table" then
+        return false
+    end
+
+    local inventory = entity and entity.inventory
+    local actor = entity and entity.actor
+    if not inventory or type(inventory.GetInventoryTable) ~= "function"
+        or not actor or type(actor.EquipInventoryItem) ~= "function"
+        or not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        nebakovrising.Utils.Log("Oyuncu ekipmani preset sonrasi geri kusanilamadi: "
+            .. "envanter veya Actor API'si kullanilamiyor: " .. tostring(entityName))
+        return false
+    end
+
+    local ok, inventoryItems = pcall(inventory.GetInventoryTable, inventory)
+    if not ok or type(inventoryItems) ~= "table" then
+        nebakovrising.Utils.Log("Oyuncu ekipmani preset sonrasi geri kusanilamadi: "
+            .. "envanter okunamadi: " .. tostring(inventoryItems))
+        return false
+    end
+
+    local remaining = {}
+    for classKey, entry in pairs(preservedClasses) do
+        if type(entry) == "table" and type(entry.class) == "string" then
+            remaining[classKey] = math.max(0, tonumber(entry.count) or 0)
+        end
+    end
+
+    local equipmentData = nebakovrising.EquipmentData
+    local itemsToEquip = {}
+    for _, itemId in pairs(inventoryItems) do
+        local itemOk, item = pcall(ItemManager.GetItem, itemId)
+        if itemOk and type(item) == "table" and type(item.class) == "string" then
+            local classKey = string.lower(string.gsub(item.class, "%-", ""))
+            if (remaining[classKey] or 0) > 0 then
+                local indexedItem = equipmentData and equipmentData.items
+                    and equipmentData.items[classKey]
+                itemsToEquip[#itemsToEquip + 1] = {
+                    id = itemId,
+                    class = item.class,
+                    slotOrder = indexedItem and equipmentData.slotOrder
+                        and equipmentData.slotOrder[indexedItem.slot] or 999,
+                }
+                remaining[classKey] = remaining[classKey] - 1
+            end
+        end
+    end
+
+    local missingCount = 0
+    for _, count in pairs(remaining) do
+        missingCount = missingCount + count
+    end
+    if missingCount > 0 then
+        nebakovrising.Utils.Log("Oyuncu ekipmani preset sonrasi envanterde bulunamadi: NPC="
+            .. tostring(entityName) .. ", eksik=" .. tostring(missingCount))
+    end
+
+    table.sort(itemsToEquip, function(left, right)
+        if left.slotOrder ~= right.slotOrder then
+            return left.slotOrder < right.slotOrder
+        end
+        return tostring(left.class) < tostring(right.class)
+    end)
+
+    local equippedCount = 0
+    for _, item in ipairs(itemsToEquip) do
+        local equipOk, result = pcall(actor.EquipInventoryItem, actor, item.id)
+        if equipOk and result ~= false then
+            equippedCount = equippedCount + 1
+            local castleUtils = nebakovrising.CastleUtils
+            if castleUtils and castleUtils.MarkPlayerEquipmentEquipped then
+                castleUtils.MarkPlayerEquipmentEquipped(entityName, item.id)
+            end
+        else
+            nebakovrising.Utils.Log("Oyuncu ekipmani preset sonrasi kusanilamadi: NPC="
+                .. tostring(entityName) .. ", class=" .. tostring(item.class)
+                .. ", sonuc=" .. tostring(result))
+        end
+    end
+    nebakovrising.Utils.Log("Oyuncu ekipmani kiyafet preset'i ardindan geri kusanildi: NPC="
+        .. tostring(entityName) .. ", item=" .. tostring(equippedCount))
+    return missingCount == 0 and equippedCount == #itemsToEquip
+end
+
 function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
     retriesLeft = retriesLeft or 0
     local entity
@@ -348,23 +433,36 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
     end
     if entity then
         local castleUtils = nebakovrising.CastleUtils
-        if castleUtils and castleUtils.IsNpcEquipmentPreserved
-            and castleUtils.IsNpcEquipmentPreserved(entityName) then
-            nebakovrising.Utils.Log("NPC oyuncu ekipmani korundugu icin varsayilan ekipman preset'i uygulanmadi: "
+        local preservePlayerEquipment = castleUtils
+            and castleUtils.IsNpcEquipmentPreserved
+            and castleUtils.IsNpcEquipmentPreserved(entityName)
+        local preservedClasses = preservePlayerEquipment
+            and castleUtils.GetPreservedPlayerEquipmentClasses
+            and castleUtils.GetPreservedPlayerEquipmentClasses(entityName)
+        if preservePlayerEquipment and type(preservedClasses) ~= "table" then
+            nebakovrising.Utils.Log("NPC ekipman preset'i atlandi; save kaydinda oyuncu esya siniflari bulunamadi: "
                 .. tostring(entityName))
             return true
         end
 
         local applied = applyGuardClothingPreset(entity)
         if applied then
-            applyGuardWeaponItem(entity)
+            if preservePlayerEquipment then
+                applied = reequipPreservedPlayerItems(
+                    entity,
+                    entityName,
+                    preservedClasses
+                )
+            else
+                applyGuardWeaponItem(entity)
+            end
         end
 
         if applied and enforceLater ~= false
             and not entity._nebakovFinalClothingEnforcementScheduled then
             entity._nebakovFinalClothingEnforcementScheduled = true
             if not scheduleEntityCallback(
-                3000,
+                1,
                 "nebakovrising.Spawner.ReapplyGuardClothingPreset",
                 entityName,
                 0

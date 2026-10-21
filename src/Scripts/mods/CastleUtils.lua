@@ -34,11 +34,18 @@ CastleUtils.noLockEnts = CastleUtils.noLockEnts or {
 
 CastleUtils.beds = CastleUtils.beds or {
     "smartObject[Bed/bed_low4_d9d626c4-dae2-416e-affd-96c3946151e3]",
+    "smartObject[Bed/bed_low1_2bbd8cec-55ba-4034-bd0f-1785ff415b2d]",
+    "smartObject[Bed/bed_low3_a01e9c19-d086-4728-ac1f-d26398043ba4]",
+    "smartObject[Bed/bed_bench1_9d9d9e04-6c8e-46e3-b935-3afd2d105a4f]",
+    "SO_LyingHarmed_Wounded2[special/lyingHarmed/lyingHarmed_healing1_200954b7-520b-4849-a8de-c928e4f3ba60]",
 }
 CastleUtils.bedEntities = CastleUtils.bedEntities or {}
 CastleUtils.bedAssignments = CastleUtils.bedAssignments or {}
 CastleUtils.bedOwners = CastleUtils.bedOwners or {}
 CastleUtils.bedAssignmentsByWuid = CastleUtils.bedAssignmentsByWuid or {}
+CastleUtils.mealBenchOwners = CastleUtils.mealBenchOwners or {}
+CastleUtils.mealBenchAssignments = CastleUtils.mealBenchAssignments or {}
+CastleUtils.mealBenchAttempts = CastleUtils.mealBenchAttempts or {}
 CastleUtils.trackedBedOwners = CastleUtils.trackedBedOwners or {}
 CastleUtils.trackedBedCandidates = CastleUtils.trackedBedCandidates or {}
 CastleUtils.trackedBedCandidatesByWuid = CastleUtils.trackedBedCandidatesByWuid or {}
@@ -46,6 +53,24 @@ CastleUtils.deathMonitorWarnings = CastleUtils.deathMonitorWarnings or {}
 CastleUtils.bedWalkStates = CastleUtils.bedWalkStates or {}
 CastleUtils.restoredNpcNames = CastleUtils.restoredNpcNames or {}
 CastleUtils._persistentStoreName = "nebakovrising_SaveStore"
+CastleUtils.mealFireplaceSelector = CastleUtils.mealFireplaceSelector
+    or "smartObject[Fireplace/fireplace_home11_c9b722b2-f2fa-4345-9f0d-b1038d95e8e7]"
+CastleUtils.mealBenchSelectors = CastleUtils.mealBenchSelectors or {
+    "smartObject2[Table/table_twoSides7:Bench/bench_2places_low_table2[Table/table_twoSides7]_db6f4e21-0c46-013d-301a-04c435ae7de9]",
+    "smartObject[Table/table_twoSides7:Bench/bench_2places_low_table2[Table/table_twoSides7]_db6f4e21-0c46-013d-301a-04c435ae7de9]",
+    "smartObject2[Table/table_twoSides7:Bench/bench_2places_low_table3[Table/table_twoSides7]_e5a98391-a268-056f-05cf-87e1e472a98c]",
+    "smartObject[Table/table_twoSides7:Bench/bench_2places_low_table3[Table/table_twoSides7]_e5a98391-a268-056f-05cf-87e1e472a98c]",
+    "smartObject2[Table/table_oneSide6:Bench/bench_2places_low_table4[Table/table_oneSide6]_c9c6d3f9-a350-0fa7-15a9-b96c3cd4e7d8]",
+    "smartObject[Table/table_oneSide6:Bench/bench_2places_low_table4[Table/table_oneSide6]_c9c6d3f9-a350-0fa7-15a9-b96c3cd4e7d8]",
+}
+CastleUtils.mealBowlClassIds = CastleUtils.mealBowlClassIds or {
+    "22910894-1c8e-4567-878a-8afc93ffd98b",
+    "25f04aba-b197-426f-b849-be874521a1c0",
+    "323bd9fb-3a36-4573-bb04-03dd79f16585",
+    "578a6bb7-4eae-4d06-9272-bdf692b249c6",
+    "6f6cdb4c-0382-49ab-bb2e-04ae2e254479",
+    "b11b000d-c50e-4565-b8ec-1bf0ac518fc9",
+}
 
 CastleUtils.removeEnts = CastleUtils.removeEnts or {
     "tneb_homeFortressArea_1",
@@ -288,6 +313,60 @@ function CastleUtils.IsNpcEquipmentPreserved(entityName)
     return type(record) == "table" and record.preserveEquipment == true
 end
 
+function CastleUtils.GetPreservedPlayerEquipmentClasses(entityName)
+    if type(entityName) ~= "string" or entityName == "" then
+        return nil
+    end
+    local records = getPersistentRecords(false)
+    local record = records and records[entityName]
+    if type(record) ~= "table" or record.preserveEquipment ~= true
+        or type(record.playerEquipmentClasses) ~= "table" then
+        return nil
+    end
+    return record.playerEquipmentClasses
+end
+
+function CastleUtils.MarkPlayerEquipmentEquipped(entityName, itemId)
+    if type(entityName) ~= "string" or entityName == "" or itemId == nil then
+        return
+    end
+    CastleUtils._playerEquipmentFallback =
+        CastleUtils._playerEquipmentFallback or {}
+    CastleUtils._playerEquipmentFallback[entityName] =
+        CastleUtils._playerEquipmentFallback[entityName] or {}
+    CastleUtils._playerEquipmentFallback[entityName][tostring(itemId)] = true
+end
+
+local function itemHasEquipmentSlot(item)
+    if not item or type(item.GetSlot) ~= "function" then
+        if not CastleUtils._playerEquipmentSlotWarningLogged then
+            CastleUtils._playerEquipmentSlotWarningLogged = true
+            log("Ekipman slotu kontrol edilemiyor: Item.GetSlot API'si kullanilamiyor; son kusandirma kaydi yedek olarak kullanilacak.")
+        end
+        return nil
+    end
+
+    local ok, slot = pcall(item.GetSlot, item, true)
+    if not ok then
+        if not CastleUtils._playerEquipmentSlotWarningLogged then
+            CastleUtils._playerEquipmentSlotWarningLogged = true
+            log("Ekipman slotu kontrol edilemiyor: Item.GetSlot cagrisinda hata: "
+                .. tostring(slot))
+        end
+        return nil
+    end
+    if slot == nil or slot == false or slot == 0 then
+        return false
+    end
+
+    local slotHandle = tostring(slot)
+    local handleValue = string.match(slotHandle, "([%x]+)$")
+    if handleValue and string.match(handleValue, "^0+$") then
+        return false
+    end
+    return true
+end
+
 function CastleUtils.EnsurePlayerEquipmentEquipped()
     local records = getPersistentRecords(false)
     if not ItemManager or type(ItemManager.GetItem) ~= "function" then
@@ -318,6 +397,11 @@ function CastleUtils.EnsurePlayerEquipmentEquipped()
                 and bedState ~= "requested"
                 and bedState ~= "active"
                 and bedState ~= "completed"
+                and bedState ~= "waking"
+                and bedState ~= "meal"
+                and bedState ~= "meal_pending"
+                and bedState ~= "meal_ready"
+                and bedState ~= "eating"
                 and type(actor.EquipInventoryItem) == "function"
                 and type(inventory.GetInventoryTable) == "function" then
                 local isUnavailable = false
@@ -360,17 +444,26 @@ function CastleUtils.EnsurePlayerEquipmentEquipped()
                                     string.gsub(item.class, "%-", "")
                                 )
                                 if (remaining[classKey] or 0) > 0 then
-                                    local indexedItem = equipmentData
-                                        and equipmentData.items
-                                        and equipmentData.items[classKey]
-                                    itemsToEquip[#itemsToEquip + 1] = {
-                                        id = itemId,
-                                        class = item.class,
-                                        slotOrder = indexedItem
-                                            and equipmentData.slotOrder
-                                            and equipmentData.slotOrder[indexedItem.slot]
-                                            or 999,
-                                    }
+                                    local hasSlot = itemHasEquipmentSlot(item)
+                                    local itemKey = tostring(itemId)
+                                    local wasEquipped = CastleUtils._playerEquipmentFallback
+                                        and CastleUtils._playerEquipmentFallback[entityName]
+                                        and CastleUtils._playerEquipmentFallback[entityName][itemKey]
+                                    if not hasSlot
+                                        and not (hasSlot == nil and wasEquipped) then
+                                        local indexedItem = equipmentData
+                                            and equipmentData.items
+                                            and equipmentData.items[classKey]
+                                        itemsToEquip[#itemsToEquip + 1] = {
+                                            id = itemId,
+                                            key = itemKey,
+                                            class = item.class,
+                                            slotOrder = indexedItem
+                                                and equipmentData.slotOrder
+                                                and equipmentData.slotOrder[indexedItem.slot]
+                                                or 999,
+                                        }
+                                    end
                                     remaining[classKey] = remaining[classKey] - 1
                                 end
                             end
@@ -392,6 +485,11 @@ function CastleUtils.EnsurePlayerEquipmentEquipped()
                             )
                             if equipOk and result ~= false then
                                 equippedCount = equippedCount + 1
+                                CastleUtils._playerEquipmentFallback =
+                                    CastleUtils._playerEquipmentFallback or {}
+                                CastleUtils._playerEquipmentFallback[entityName] =
+                                    CastleUtils._playerEquipmentFallback[entityName] or {}
+                                CastleUtils._playerEquipmentFallback[entityName][item.key] = true
                             else
                                 log("Oyuncu ekipmani yeniden kusanilamadi: NPC="
                                     .. tostring(entityName)
@@ -526,6 +624,141 @@ local function getEntityKey(entity, fallbackId)
     return tostring(fallbackId)
 end
 
+local function findMealBowlItem(inventory)
+    local ok, inventoryItems = pcall(
+        inventory.GetInventoryTable,
+        inventory
+    )
+    if not ok or type(inventoryItems) ~= "table" then
+        log("NPC icin kase kontrol edilemedi: envanter okunamadi: "
+            .. tostring(inventoryItems))
+        return nil
+    end
+
+    local bowlClasses = {}
+    for _, classId in ipairs(CastleUtils.mealBowlClassIds) do
+        bowlClasses[string.lower(string.gsub(classId, "%-", ""))] = true
+    end
+    for _, itemId in pairs(inventoryItems) do
+        local itemOk, item = pcall(ItemManager.GetItem, itemId)
+        if itemOk and type(item) == "table" and type(item.class) == "string" then
+            local classKey = string.lower(string.gsub(item.class, "%-", ""))
+            if bowlClasses[classKey] then
+                return itemId, item.class
+            end
+        end
+    end
+    return nil
+end
+
+function CastleUtils.EnsureNpcHasMealBowl(npcWuid)
+    if npcWuid == nil then
+        log("NPC icin kase kontrol edilemedi: WUID yok.")
+        return false
+    end
+
+    local npc
+    if XGenAIModule and type(XGenAIModule.GetEntityByWUID) == "function" then
+        local entityOk, entity = pcall(XGenAIModule.GetEntityByWUID, npcWuid)
+        if entityOk then
+            npc = entity
+        end
+    end
+    if not npc then
+        npc = System.GetEntity(npcWuid)
+    end
+    local inventory = npc and npc.inventory
+    if not inventory or type(inventory.GetInventoryTable) ~= "function" then
+        log("NPC icin kase kontrol edilemedi: Inventory.GetInventoryTable kullanilamiyor.")
+        return false
+    end
+    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        log("NPC icin kase kontrol edilemedi: ItemManager.GetItem kullanilamiyor.")
+        return false
+    end
+
+    local bowlItemId, bowlClass = findMealBowlItem(inventory)
+    if bowlItemId then
+        log("NPC kazan davranisi icin kase envanterde mevcut: NPC="
+            .. tostring(npcWuid) .. ", item=" .. tostring(bowlItemId)
+            .. ", class=" .. tostring(bowlClass))
+        return bowlItemId
+    end
+
+    if type(inventory.CreateItem) ~= "function" then
+        log("NPC icin kase olusturulamadi: Inventory.CreateItem kullanilamiyor.")
+        return false
+    end
+    local bowlClassId = "6f6cdb4c-0382-49ab-bb2e-04ae2e254479"
+    local createOk, bowlItemId = pcall(
+        inventory.CreateItem,
+        inventory,
+        bowlClassId,
+        1,
+        1
+    )
+    if not createOk or bowlItemId == nil or bowlItemId == false then
+        log("NPC icin bos corba kasesi olusturulamadi: NPC="
+            .. tostring(npcWuid) .. ", sonuc=" .. tostring(bowlItemId))
+        return false
+    end
+
+    local addedItemId, addedClass = findMealBowlItem(inventory)
+    if not addedItemId then
+        log("NPC icin CreateItem basarili gorundu ancak kase envanterde dogrulanamadi: NPC="
+            .. tostring(npcWuid) .. ", sonuc=" .. tostring(bowlItemId))
+        return false
+    end
+
+    log("NPC icin bos corba kasesi eklendi ve dogrulandi: NPC="
+        .. tostring(npcWuid) .. ", item=" .. tostring(addedItemId)
+        .. ", class=" .. tostring(addedClass))
+    return addedItemId
+end
+
+function CastleUtils.SetMealProgress(npc, stage)
+    if not npc then
+        log("NPC yemek asamasi kaydedilemedi: entity yok.")
+        return false
+    end
+
+    local entityName = getEntityKey(npc, npc.this and npc.this.id)
+    local records = getPersistentRecords(stage ~= nil)
+    local record = records and records[entityName]
+    if not record then
+        log("NPC yemek asamasi kaydedilemedi: kalici NPC kaydi yok: "
+            .. tostring(entityName))
+        return false
+    end
+
+    record.mealStage = stage
+    if stage == "meal_ready" then
+        record.mealCollected = true
+    elseif stage == nil or stage == "walking_to_cauldron"
+        or stage == "meal_pending" then
+        record.mealCollected = false
+    end
+    log("NPC yemek asamasi save'e yazildi: " .. entityName
+        .. ", stage=" .. tostring(stage))
+    return true
+end
+
+function CastleUtils.GetMealProgress(npc)
+    if not npc then return nil end
+    local entityName = getEntityKey(npc, npc.this and npc.this.id)
+    local records = getPersistentRecords(false)
+    local record = records and records[entityName]
+    return type(record) == "table" and record.mealStage or nil
+end
+
+function CastleUtils.HasCollectedMeal(npc)
+    if not npc then return false end
+    local entityName = getEntityKey(npc, npc.this and npc.this.id)
+    local records = getPersistentRecords(false)
+    local record = records and records[entityName]
+    return type(record) == "table" and record.mealCollected == true
+end
+
 local function getAiWuid(entity)
     if not entity or not XGenAIModule or not XGenAIModule.GetMyWUID then
         return nil
@@ -536,6 +769,141 @@ local function getAiWuid(entity)
         return wuid
     end
     return nil
+end
+
+function CastleUtils.GetMealFireplace()
+    local selector = CastleUtils.mealFireplaceSelector
+    local entityId = System.GetEntityIdByName(selector)
+    local entity = entityId and System.GetEntity(entityId)
+    local wuid = entity and getAiWuid(entity)
+    local position = entity and readEntityPosition(entity)
+    if entity and wuid and position then
+        return entity, wuid, position
+    end
+
+    log("Yemek fireplace'i bulunamadi veya smartobject WUID/konumu hazir degil: "
+        .. tostring(selector))
+    return nil
+end
+
+local function resolveMealBench(selector)
+    local entityId = System.GetEntityIdByName(selector)
+    local entity = entityId and System.GetEntity(entityId)
+    local wuid = entity and getAiWuid(entity)
+    local position = entity and readEntityPosition(entity)
+    if entity and wuid and position then
+        return {
+            id = selector,
+            entity = entity,
+            selector = selector,
+            wuid = wuid,
+            position = position,
+        }
+    end
+
+    log("Yemek bench'i bulunamadi veya smartobject WUID/konumu hazir degil: "
+        .. tostring(selector) .. ", WUID=" .. tostring(wuid))
+    return nil
+end
+
+function CastleUtils.GetMealBench(npcWuid)
+    if npcWuid == nil then
+        log("Yemek bench'i atanamadi: NPC WUID yok.")
+        return nil
+    end
+
+    local npcKey = tostring(npcWuid)
+    local assignment = CastleUtils.mealBenchAssignments[npcKey]
+    if assignment then
+        local bench = resolveMealBench(assignment.selector)
+        if bench then
+            return bench.entity, bench.wuid, bench.position, bench.selector
+        end
+        return nil
+    end
+
+    local attempts = CastleUtils.mealBenchAttempts[npcKey]
+    if type(attempts) ~= "table" then
+        attempts = {}
+        CastleUtils.mealBenchAttempts[npcKey] = attempts
+    end
+
+    local availableUntriedBench = false
+    for pass = 1, 2 do
+        for _, selector in ipairs(CastleUtils.mealBenchSelectors) do
+            local owner = CastleUtils.mealBenchOwners[selector]
+            if not owner then
+                local bench = resolveMealBench(selector)
+                if bench then
+                    availableUntriedBench = true
+                    if pass == 2 or not attempts[selector] then
+                        CastleUtils.mealBenchOwners[selector] = npcKey
+                        CastleUtils.mealBenchAssignments[npcKey] = bench
+                        attempts[selector] = true
+                        log("Yemek bench'i NPC'ye atandi: NPC=" .. npcKey
+                            .. " -> " .. selector)
+                        return bench.entity, bench.wuid, bench.position, bench.selector
+                    end
+                end
+            end
+        end
+
+        if pass == 1 and availableUntriedBench then
+            for key in pairs(attempts) do
+                attempts[key] = nil
+            end
+            log("NPC icin bos bench kalmadi; yenileme turu baslatiliyor: "
+                .. npcKey)
+        else
+            break
+        end
+    end
+
+    log("NPC icin bos yemek bench'i yok: " .. npcKey)
+    return nil
+end
+
+function CastleUtils.RetryMealBench(npcWuid)
+    if npcWuid == nil then return false end
+
+    local npcKey = tostring(npcWuid)
+    local assignment = CastleUtils.mealBenchAssignments[npcKey]
+    if not assignment then
+        log("Yemek bench'i yeniden atanamadi: mevcut atama yok: " .. npcKey)
+        return false
+    end
+
+    local attempts = CastleUtils.mealBenchAttempts[npcKey]
+    if type(attempts) ~= "table" then
+        attempts = {}
+        CastleUtils.mealBenchAttempts[npcKey] = attempts
+    end
+    attempts[assignment.selector] = true
+    if CastleUtils.mealBenchOwners[assignment.selector] == npcKey then
+        CastleUtils.mealBenchOwners[assignment.selector] = nil
+    end
+    CastleUtils.mealBenchAssignments[npcKey] = nil
+
+    log("NPC oturamadigi yemek bench'ini bir sonraki deneme icin birakti: NPC="
+        .. npcKey .. " -> " .. tostring(assignment.selector))
+    return true
+end
+
+function CastleUtils.ReleaseMealBenchForNpc(npcWuid)
+    if npcWuid == nil then return false end
+
+    local npcKey = tostring(npcWuid)
+    local assignment = CastleUtils.mealBenchAssignments[npcKey]
+    if not assignment then return false end
+
+    if CastleUtils.mealBenchOwners[assignment.selector] == npcKey then
+        CastleUtils.mealBenchOwners[assignment.selector] = nil
+    end
+    CastleUtils.mealBenchAssignments[npcKey] = nil
+    CastleUtils.mealBenchAttempts[npcKey] = nil
+    log("NPC yemek bench atamasi serbest birakildi: NPC=" .. npcKey
+        .. " -> " .. tostring(assignment.selector))
+    return true
 end
 
 local function isNpcDead(npc)
@@ -729,12 +1097,15 @@ function CastleUtils.ResetBedAssignments()
     CastleUtils.bedOwners = {}
     CastleUtils.bedAssignments = {}
     CastleUtils.bedAssignmentsByWuid = {}
+    CastleUtils.mealBenchOwners = {}
+    CastleUtils.mealBenchAssignments = {}
+    CastleUtils.mealBenchAttempts = {}
     CastleUtils.trackedBedOwners = {}
     CastleUtils.trackedBedCandidates = {}
     CastleUtils.trackedBedCandidatesByWuid = {}
     CastleUtils.deathMonitorWarnings = {}
     CastleUtils.bedWalkStates = {}
-    log("Gecici yatak haritalari temizlendi; kayitli NPC yataklari yeniden kurulacak.")
+    log("Gecici yatak/yemek yeri atamalari temizlendi; kayitli NPC yataklari yeniden kurulacak.")
 end
 
 function CastleUtils.ReleaseBedAssignmentForNpc(entityName)
@@ -847,7 +1218,7 @@ function CastleUtils.RestoreNpcRuntimeState(userData)
 
         local records = getPersistentRecords(false)
         local record = records and records[entityName]
-        if record and record.preserveEquipment ~= true
+        if record
             and nebakovrising.Spawner
             and nebakovrising.Spawner.ApplyGuardClothingPreset then
             local applied = nebakovrising.Spawner.ApplyGuardClothingPreset(
@@ -1028,17 +1399,16 @@ function CastleUtils.RestoreManagedNpcs(attemptsLeft)
                     end
                 end
 
-                if record.preserveEquipment ~= true
-                    and nebakovrising.Spawner
+                if nebakovrising.Spawner
                     and nebakovrising.Spawner.ApplyGuardClothingPreset then
                     log("NPC kiyafet preset'i gecikmeli olarak geri uygulanacak: "
                         .. entityName)
                 else
-                    log("Save'den yuklenen NPC'nin oyuncu ekipmani korunuyor: "
+                    log("Save'den yuklenen NPC icin kiyafet preset'i geri yuklenecek: "
                         .. entityName)
                 end
                 Script.SetTimerForFunction(
-                    2000,
+                    1000,
                     "nebakovrising.CastleUtils.RestoreNpcRuntimeState",
                     {
                         entityName = entityName,
@@ -1220,6 +1590,116 @@ function CastleUtils.SetBedWalkState(npcWuid, state)
     return true
 end
 
+local sleepingArmorSlots = {
+    [22] = true, [31] = true, [32] = true, [33] = true,
+    [34] = true, [37] = true, [38] = true, [39] = true,
+    [41] = true, [42] = true,
+}
+
+local function isSleepingEquipment(equipmentData, classKey)
+    local indexedItem = equipmentData.items[classKey]
+    local slot = indexedItem and indexedItem.slot
+    return (slot and sleepingArmorSlots[slot])
+        or (equipmentData.weaponClasses
+            and equipmentData.weaponClasses[classKey] == true)
+end
+
+function CastleUtils.EquipSleepingEquipment(entity)
+    local actor = entity and entity.actor
+    local inventory = entity and entity.inventory
+    if not actor or type(actor.EquipInventoryItem) ~= "function" then
+        log("Uyanma sonrasi ekipman kusanilamadi: Actor.EquipInventoryItem API'si kullanilamiyor.")
+        return false
+    end
+    for _, statusMethodName in ipairs({ "IsDead", "IsUnconscious" }) do
+        local statusMethod = actor[statusMethodName]
+        if type(statusMethod) == "function" then
+            local statusOk, unavailable = pcall(statusMethod, actor)
+            if not statusOk then
+                log("Uyanma sonrasi ekipman durumu okunamadi: "
+                    .. statusMethodName .. ", sonuc=" .. tostring(unavailable))
+                return false
+            end
+            if unavailable then
+                log("Uyanma sonrasi ekipman kusanilmadi: NPC olu veya bilincsiz.")
+                return false
+            end
+        end
+    end
+    if not inventory or type(inventory.GetInventoryTable) ~= "function" then
+        log("Uyanma sonrasi ekipman kusanilamadi: Inventory.GetInventoryTable API'si kullanilamiyor.")
+        return false
+    end
+    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        log("Uyanma sonrasi ekipman kusanilamadi: ItemManager.GetItem API'si kullanilamiyor.")
+        return false
+    end
+
+    local equipmentData = nebakovrising.EquipmentData
+    if not equipmentData or type(equipmentData.items) ~= "table" then
+        log("Uyanma sonrasi ekipman kusanilamadi: EquipmentData indeksi kullanilamiyor.")
+        return false
+    end
+
+    local inventoryOk, inventoryItems = pcall(
+        inventory.GetInventoryTable,
+        inventory
+    )
+    if not inventoryOk or type(inventoryItems) ~= "table" then
+        log("Uyanma sonrasi ekipman kusanilamadi: envanter okunamadi: "
+            .. tostring(inventoryItems))
+        return false
+    end
+
+    local itemsToEquip = {}
+    local failedCount = 0
+    for _, itemId in pairs(inventoryItems) do
+        local itemOk, item = pcall(ItemManager.GetItem, itemId)
+        if not itemOk or type(item) ~= "table" or type(item.class) ~= "string" then
+            failedCount = failedCount + 1
+            log("Uyanma sonrasi esya sinifi okunamadi: item="
+                .. tostring(itemId) .. ", sonuc=" .. tostring(item))
+        else
+            local classKey = string.lower(string.gsub(item.class, "%-", ""))
+            if isSleepingEquipment(equipmentData, classKey) then
+                local indexedItem = equipmentData.items[classKey]
+                itemsToEquip[#itemsToEquip + 1] = {
+                    id = itemId,
+                    class = item.class,
+                    slotOrder = indexedItem and equipmentData.slotOrder
+                        and equipmentData.slotOrder[indexedItem.slot] or 999,
+                }
+            end
+        end
+    end
+
+    table.sort(itemsToEquip, function(left, right)
+        if left.slotOrder ~= right.slotOrder then
+            return left.slotOrder < right.slotOrder
+        end
+        return tostring(left.class) < tostring(right.class)
+    end)
+
+    for _, item in ipairs(itemsToEquip) do
+        local equipOk, result = pcall(
+            actor.EquipInventoryItem,
+            actor,
+            item.id
+        )
+        if not equipOk or result == false then
+            failedCount = failedCount + 1
+            log("Uyanma sonrasi esya kusanilamadi: class="
+                .. tostring(item.class) .. ", item=" .. tostring(item.id)
+                .. ", sonuc=" .. tostring(result))
+        end
+    end
+
+    log("Uyanma sonrasi ekipman geri kusanildi: entity="
+        .. tostring(entity.id) .. ", hedef esya=" .. tostring(#itemsToEquip)
+        .. ", hata=" .. tostring(failedCount))
+    return failedCount == 0
+end
+
 function CastleUtils.UnequipSleepingArmor(entity)
     local actor = entity and entity.actor
     local inventory = entity and entity.inventory
@@ -1250,11 +1730,6 @@ function CastleUtils.UnequipSleepingArmor(entity)
         return false
     end
 
-    local armorSlots = {
-        [22] = true, [31] = true, [32] = true, [33] = true,
-        [34] = true, [37] = true, [38] = true, [39] = true,
-        [41] = true, [42] = true,
-    }
     local itemCount = 0
     local failedCount = 0
     for _, itemId in pairs(inventoryItems) do
@@ -1267,9 +1742,8 @@ function CastleUtils.UnequipSleepingArmor(entity)
             local classKey = string.lower(string.gsub(item.class, "%-", ""))
             local indexedItem = equipmentData.items[classKey]
             local slot = indexedItem and indexedItem.slot
-            local isArmor = slot and armorSlots[slot]
             local isWeapon = equipmentData.weaponClasses[classKey] == true
-            if isArmor or isWeapon then
+            if isSleepingEquipment(equipmentData, classKey) then
                 itemCount = itemCount + 1
                 local unequipOk, result = pcall(
                     actor.UnequipInventoryItem,
@@ -1304,7 +1778,9 @@ end
 function CastleUtils.MarkBedWalkInterrupted(npcWuid)
     if npcWuid == nil then return false end
     local key = tostring(npcWuid)
-    if CastleUtils.bedWalkStates[key] ~= "completed" then
+    local state = CastleUtils.bedWalkStates[key]
+    if state ~= "completed" and state ~= "meal_pending"
+        and state ~= "meal_ready" and state ~= "eating" then
         CastleUtils.bedWalkStates[key] = "idle"
     end
     return true
@@ -1406,7 +1882,7 @@ function CastleUtils.OnGameplayStarted()
     CastleUtils.LogPersistentNpcState()
     CastleUtils.AssignPlayerChest()
     Script.SetTimerForFunction(
-        3000,
+        1,
         "nebakovrising.CastleUtils.RestoreManagedNpcs",
         30
     )

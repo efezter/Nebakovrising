@@ -39,6 +39,10 @@
 			<Variable name="nebakovWalkAvailable" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovRequestTicks" type="_int" values="0" isPersistent="0" form="single" />
 			<Variable name="nebakovSchedulerLogged" type="_bool" values="false" isPersistent="0" form="single" />
+			<Variable name="nebakovMealReady" type="_bool" values="false" isPersistent="0" form="single" />
+			<Variable name="nebakovResumeMealWalk" type="_bool" values="false" isPersistent="0" form="single" />
+			<Variable name="nebakovResumeMealAtTable" type="_bool" values="false" isPersistent="0" form="single" />
+			<Variable name="nebakovMealTicks" type="_int" values="0" isPersistent="0" form="single" />
 		</Variables>
 		<Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
 			<OnInit canSkip="1">
@@ -648,6 +652,45 @@
 													or false
 												data.nebakovHasBed = assignment ~= nil
 												local walkState = castle and castle.GetBedWalkState(entity.this.id)
+												local mealStage = castle and castle.GetMealProgress(entity)
+												local mealCollected = castle
+													and castle.HasCollectedMeal
+													and castle.HasCollectedMeal(entity) == true
+												if (mealStage == 'meal_ready' or mealStage == 'eating')
+													and not mealCollected then
+													mealStage = 'meal_pending'
+													castle.SetMealProgress(entity, 'meal_pending')
+													castle.SetBedWalkState(entity.this.id, 'idle')
+													walkState = 'idle'
+													System.LogAlways('[nebakovrising] Save-load: eski meal_ready kaydi gercek kase doldurma onayi olmadigindan yeniden alinacak')
+												end
+												data.nebakovResumeMealWalk = (
+													mealStage == 'walking_to_cauldron'
+													or mealStage == 'meal_pending'
+												)
+													and (walkState == nil or walkState == 'idle')
+												data.nebakovResumeMealAtTable = (
+													mealStage == 'meal_ready'
+													or mealStage == 'eating'
+												)
+													and (walkState == nil or walkState == 'idle')
+												if data.nebakovResumeMealAtTable then
+													castle.SetBedWalkState(entity.this.id, 'meal_ready')
+													castle.SetMealProgress(entity, 'meal_ready')
+													walkState = 'meal_ready'
+												end
+												data.nebakovMealReady = false
+												if walkState == 'meal_retry_wait' then
+													data.nebakovMealTicks = data.nebakovMealTicks + 1
+													if data.nebakovMealTicks >= 30 then
+														castle.SetBedWalkState(entity.this.id, 'idle')
+														walkState = 'idle'
+														data.nebakovMealTicks = 0
+													end
+												else
+													data.nebakovMealTicks = 0
+												end
+												data.nebakovMealReady = walkState == 'meal_ready'
 												if walkState == 'requested' then
 													data.nebakovRequestTicks = data.nebakovRequestTicks + 1
 													if data.nebakovRequestTicks >= 20 then
@@ -672,9 +715,11 @@
 												if data.nebakovBedManaged
 													and data.nebakovLastSleepTime ~= sleepTime then
 													data.nebakovLastSleepTime = sleepTime
+													--[[
 													System.LogAlways('[nebakovrising] NPC sleep schedule changed; entity='
 														.. tostring(entity.this.id) .. ', sleepTime='
 														.. tostring(sleepTime) .. ', hour=' .. tostring(gameHour))
+													]]
 												end
 											" />
 											<IfCondition failOnCondition="false" condition="$nebakovWalkAvailable">
@@ -689,6 +734,32 @@
 													" />
 													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_walk_to_bed'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="true" />
 													<ExecuteLua code="System.LogAlways('[nebakovrising] Sleep interrupt submitted; entity=' .. tostring(entity.this.id))" />
+												</Sequence>
+											</IfCondition>
+											<IfCondition failOnCondition="false" condition="$nebakovResumeMealWalk">
+												<Sequence>
+													<ExecuteLua code="
+														local castle = nebakovrising and nebakovrising.CastleUtils
+														if castle then
+															castle.SetBedWalkState(entity.this.id, 'meal_resuming')
+														end
+														System.LogAlways('[nebakovrising] Save-load: kayitli kazan yuruyusu interrupti yeniden baslatiliyor')
+													" />
+													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_resume_meal_walk'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
+												</Sequence>
+											</IfCondition>
+											<IfCondition failOnCondition="false" condition="$nebakovMealReady">
+												<Sequence>
+													<ExecuteLua code="
+														local castle = nebakovrising and nebakovrising.CastleUtils
+														if castle then
+															castle.SetBedWalkState(entity.this.id, 'eating')
+															castle.SetMealProgress(entity, 'eating')
+														end
+														System.LogAlways('[nebakovrising] NPC kazan yeme davranisina hazir; masaya oturma interrupti baslatiliyor')
+													" />
+													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_eat_at_table'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
+													<ExecuteLua code="System.LogAlways('[nebakovrising] Table-eating interrupt submitted')" />
 												</Sequence>
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovBedManaged &amp; ~$nebakovHasBed">
@@ -760,6 +831,10 @@
 				<Variable name="nebakovWalkAvailable" comment="" />
 				<Variable name="nebakovRequestTicks" comment="" />
 				<Variable name="nebakovSchedulerLogged" comment="" />
+				<Variable name="nebakovMealReady" comment="" />
+				<Variable name="nebakovResumeMealWalk" comment="" />
+				<Variable name="nebakovResumeMealAtTable" comment="" />
+				<Variable name="nebakovMealTicks" comment="" />
 			</Variables>
 			<ForwardDeclarations />
 			<Root editorPosX="-1160" editorPosY="30" hasInputBreakpoint="0" comment="" breakpointFlags="0" saveVersion="2">
