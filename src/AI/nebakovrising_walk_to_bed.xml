@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<BehaviorTrees>
+    <BehaviorTree name="nebakovrising_walk_to_bed" is_function="0">
+        <Variables>
+            <Variable name="bedPos" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="bedWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="bedEnabled" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="hasBed" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="sleepWindow" type="_bool" values="false" isPersistent="0" form="single" />
+        </Variables>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <EntityContext context="crime_preventDespawn" target="">
+                    <FuseBox StatusPropagation="Child" OneCleanup="true" saveVersion="2">
+                        <Child canSkip="1">
+                            <Sequence>
+                                <ExecuteLua code="
+                                    data.bedEnabled = nebakovrising
+                                        and nebakovrising.Config
+                                        and nebakovrising.Config.bedBehaviorEnabled == true
+                                        or false
+                                " />
+                                <IfCondition failOnCondition="true" condition="$bedEnabled">
+                                <Sequence>
+                                <ExecuteLua code="
+                                    System.LogAlways('[nebakovrising] Bed-walk behavior started; entity=' .. tostring(entity.this.id))
+                                    local castle = nebakovrising and nebakovrising.CastleUtils
+                                    local assignment = castle and castle.GetBedAssignment(entity.this.id)
+                                    if assignment and assignment.position then
+                                        castle.SetBedWalkState(entity.this.id, 'active')
+                                        data.bedPos.x = assignment.position.x
+                                        data.bedPos.y = assignment.position.y
+                                        data.bedPos.z = assignment.position.z
+                                        if assignment.wuid then
+                                            data.bedWuid = assignment.wuid
+                                            data.hasBed = true
+                                        else
+                                            data.hasBed = false
+                                            System.LogAlways('[nebakovrising] Bed-walk failed: assigned bed has no WUID')
+                                        end
+                                        System.LogAlways('[nebakovrising] Bed-walk destination resolved: ' .. tostring(assignment.selector))
+                                    else
+                                        data.hasBed = false
+                                        System.LogAlways('[nebakovrising] Bed-walk failed: no bed assignment or position')
+                                    end
+                                " />
+                                <IfCondition failOnCondition="true" condition="$hasBed">
+                                    <ExecuteLua code="System.LogAlways('[nebakovrising] Starting Move toward assigned bed')" />
+                                </IfCondition>
+                                <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                    <Move stopWithinDistance="0.700000" stopDistanceVariation="0.200000" rayCasteFlee="false" successDistance="0.000000" changeNPCState="false" fastForwardIncludesMove="false" destinationSpecification="$bedPos" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                </MoveParamsDecorator>
+                                <ExecuteLua code="System.LogAlways('[nebakovrising] Bed-walk Move completed')" />
+                                <ExecuteLua code="
+                                    local castle = nebakovrising and nebakovrising.CastleUtils
+                                    if castle then
+                                        castle.SetBedWalkState(entity.this.id, 'completed')
+                                    end
+                                " />
+                                <ExecuteLua code="System.LogAlways('[nebakovrising] Requesting lying stance on assigned bed WUID=' .. tostring(data.bedWuid))" />
+                                <StanceElement smartObject="$bedWuid" stance="lying" allowAny="false" enabled="true">
+                                    <Sequence>
+                                        <WaitAction />
+                                        <ExecuteLua code="System.LogAlways('[nebakovrising] Bed lying enter action completed')" />
+                                        <AddBuffElement Buff="'cbbedb16-8ab8-4583-b740-a0e8a2521d95'" enabled="true">
+                                            <EntityContextPresetElement contextPreset="sleeping" enabled="true">
+                                                <Sequence>
+                                                    <ExecuteLua code="
+                                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                                        data.sleepWindow = castle and castle.IsNpcSleepTime
+                                                            and castle.IsNpcSleepTime() == true
+                                                            or false
+                                                        System.LogAlways('[nebakovrising] NPC entered sleeping context; sleepWindow='
+                                                            .. tostring(data.sleepWindow))
+                                                    " />
+                                                    <While doFail="false" propagateChildFail="false" condition="$sleepWindow">
+                                                        <Sequence>
+                                                        <Wait duration="'1s'" timeType="GameTime" doFail="false" />
+                                                        <ExecuteLua code="
+                                                            local castle = nebakovrising and nebakovrising.CastleUtils
+                                                            data.sleepWindow = castle and castle.IsNpcSleepTime
+                                                                and castle.IsNpcSleepTime() == true
+                                                                or false
+                                                            if not data.sleepWindow and castle then
+                                                                castle.SetBedWalkState(entity.this.id, 'idle')
+                                                                System.LogAlways('[nebakovrising] NPC waking up; sleep schedule ended')
+                                                            end
+                                                        " />
+                                                        </Sequence>
+                                                    </While>
+                                                    <ExecuteLua code="
+                                                        if AI and type(AI.SetStance) == 'function'
+                                                            and E_ACTORSTANCE_NORMAL ~= nil then
+                                                            local ok, err = pcall(
+                                                                AI.SetStance,
+                                                                entity.id,
+                                                                E_ACTORSTANCE_NORMAL
+                                                            )
+                                                            if not ok then
+                                                                System.LogAlways('[nebakovrising] NPC standing stance restore failed: '
+                                                                    .. tostring(err))
+                                                            end
+                                                        end
+                                                        local castle = nebakovrising and nebakovrising.CastleUtils
+                                                        if castle then
+                                                            castle.SetBedWalkState(entity.this.id, 'idle')
+                                                        end
+                                                    " />
+                                                </Sequence>
+                                            </EntityContextPresetElement>
+                                        </AddBuffElement>
+                                    </Sequence>
+                                </StanceElement>
+                                </Sequence>
+                                </IfCondition>
+                            </Sequence>
+                        </Child>
+                        <OnFail canSkip="1">
+                            <ExecuteLua code="
+                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                if castle then
+                                    castle.MarkBedWalkInterrupted(entity.this.id)
+                                end
+                                System.LogAlways('[nebakovrising] Bed-walk/sleep behavior ended; scheduler will retry at bedtime')
+                            " />
+                        </OnFail>
+                    </FuseBox>
+                </EntityContext>
+            </Behavior>
+        </Root>
+    </BehaviorTree>
+</BehaviorTrees>

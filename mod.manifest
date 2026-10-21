@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<kcd_mod xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <info>
+    <name>nebakovrising</name>
+    <description>Be a lord</description>
+    <author>Efester</author>
+    <version>1.0</version>
+    <created_on>2026-02-24T19:16:24.1743799+01:00</created_on>
+    <modid>nebakovrising</modid>
+    <modifies_level>false</modifies_level>
+  </info>
+  <supports>
+    <version>1.*</version>
+  </supports>
+</kcd_mod>

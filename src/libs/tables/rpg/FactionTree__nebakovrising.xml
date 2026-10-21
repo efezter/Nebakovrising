@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<database xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="barbora" xsi:noNamespaceSchemaLocation="FactionTree.xsd">
+	<FactionTree version="1">
+		<Faction Name="dummyFaction">
+			<Relations>
+				<Relation target="player" reputation="0" />
+				<Relation target="players_friends" reputation="0" />
+				<Relation target="kutnohorsko_allies" reputation="0" />
+				<Relation target="trosecko_allies" reputation="0" />
+				<Relation target="players_enemies" reputation="0" />
+				<Relation target="trosecko_enemies" reputation="0" />
+				<Relation target="kutnohorsko_enemies" reputation="0" />
+			</Relations>
+		</Faction>
+		<Faction Name="trosecko_settlements_tvrzNebakov_soldiers">
+			<Relations>
+				<Relation target="player" reputation="1" />
+			</Relations>
+		</Faction>
+		<Faction Name="player">
+			<Relations>
+				<Relation target="trosecko_settlements_tvrzNebakov_soldiers" reputation="1" />
+			</Relations>
+		</Faction>
+	</FactionTree>
+</database>
