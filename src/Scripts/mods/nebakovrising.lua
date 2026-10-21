@@ -17,6 +17,7 @@ nebakovrising.Config = {
     guardFaction = "trosecko_settlements_tvrzNebakov_soldiers",
     defaultGuardClothingPreset = "a1b2c3d4-0005-4000-8000-100000000005",
     fallbackGuardClothingPreset = "a1b2c3d4-0005-4000-8000-100000000005",
+    defaultGuardWeaponClassId = "2f2095b6-ad4b-4002-9af3-96612f3e143c",
     -- Spawner icin varsayilan NPC ayarlari (kendi GUID'lerini doldur)
     npcDefaults = {
         guidSharedSoulId      = "0e118323-c699-4e4f-8bfa-15e1681e154f",

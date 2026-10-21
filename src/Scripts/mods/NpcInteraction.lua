@@ -154,7 +154,11 @@ function Interaction.LogTransferOwnership(entity)
     if #playerReceived > 0 or #npcReceived > 0 then
         local castleUtils = nebakovrising.CastleUtils
         if castleUtils and castleUtils.MarkNpcEquipmentModified then
-            castleUtils.MarkNpcEquipmentModified(entity)
+            castleUtils.MarkNpcEquipmentModified(
+                entity,
+                npcReceived,
+                playerReceived
+            )
         end
     end
 

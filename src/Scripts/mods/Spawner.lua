@@ -143,6 +143,128 @@ local function applyGuardClothingPreset(entity)
     return true
 end
 
+local function applyGuardWeaponItem(entity)
+    if not entity or not entity.actor then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: actor bulunamadi.")
+        return false
+    end
+    local inventory = entity.inventory
+    if not inventory or type(inventory.GetInventoryTable) ~= "function"
+        or type(inventory.FindItem) ~= "function"
+        or type(inventory.CreateItem) ~= "function"
+        or type(inventory.DeleteItemOfClass) ~= "function" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: envanter API'leri kullanilamiyor.")
+        return false
+    end
+    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: ItemManager.GetItem API'si kullanilamiyor.")
+        return false
+    end
+    if type(entity.actor.EquipInventoryItem) ~= "function"
+        or type(entity.actor.UnequipInventoryItem) ~= "function" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: Actor ekipman API'leri kullanilamiyor.")
+        return false
+    end
+    local equipmentData = nebakovrising.EquipmentData
+    if not equipmentData or type(equipmentData.weaponClasses) ~= "table" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: silah sinifi indeksi kullanilamiyor.")
+        return false
+    end
+
+    local itemClassId = nebakovrising.Config.defaultGuardWeaponClassId
+    if type(itemClassId) ~= "string" or itemClassId == "" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: item class ID bos.")
+        return false
+    end
+
+    local itemClassKey = string.lower(string.gsub(itemClassId, "%-", ""))
+    local ok, inventoryItems = pcall(inventory.GetInventoryTable, inventory)
+    if not ok or type(inventoryItems) ~= "table" then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: envanter okunamadi: "
+            .. tostring(inventoryItems))
+        return false
+    end
+    local otherWeaponClasses = {}
+    for _, itemId in pairs(inventoryItems) do
+        local itemOk, item = pcall(ItemManager.GetItem, itemId)
+        if itemOk and type(item) == "table" and type(item.class) == "string" then
+            local classKey = string.lower(string.gsub(item.class, "%-", ""))
+            if equipmentData.weaponClasses[classKey]
+                and classKey ~= itemClassKey then
+                otherWeaponClasses[item.class] = true
+                local unequipOk, unequipResult = pcall(
+                    entity.actor.UnequipInventoryItem,
+                    entity.actor,
+                    itemId
+                )
+                if not unequipOk or unequipResult == false then
+                    nebakovrising.Utils.Log("Eski muhafiz silahi unequip cagrisi basarisiz; envanterden kaldirma denenecek: class="
+                        .. tostring(item.class) .. ", item=" .. tostring(itemId)
+                        .. ", sonuc=" .. tostring(unequipResult))
+                end
+            end
+        end
+    end
+
+    for className in pairs(otherWeaponClasses) do
+        local removeOk, removeResult = pcall(
+            inventory.DeleteItemOfClass,
+            inventory,
+            className,
+            99
+        )
+        if not removeOk or removeResult == false then
+            nebakovrising.Utils.Log("Eski muhafiz silahi envanterden silinemedi: class="
+                .. tostring(className) .. ", sonuc=" .. tostring(removeResult))
+            return false
+        end
+    end
+
+    local findOk, itemId = pcall(inventory.FindItem, inventory, itemClassId)
+    if not findOk then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi aranirken hata olustu: "
+            .. tostring(itemId))
+        return false
+    end
+    if not itemId then
+        local createOk, createResult = pcall(
+            inventory.CreateItem,
+            inventory,
+            itemClassId,
+            1,
+            1
+        )
+        if not createOk or createResult == false then
+            nebakovrising.Utils.Log("Muhafiz varsayilan silahi envantere eklenemedi: class="
+                .. itemClassId .. ", sonuc=" .. tostring(createResult))
+            return false
+        end
+        findOk, itemId = pcall(inventory.FindItem, inventory, itemClassId)
+    end
+    if not findOk or not itemId then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi envanterde dogrulanamadi: class="
+            .. itemClassId .. ", sonuc=" .. tostring(itemId))
+        return false
+    end
+
+    local equipOk, equipResult = pcall(
+        entity.actor.EquipInventoryItem,
+        entity.actor,
+        itemId
+    )
+    if not equipOk or equipResult == false then
+        nebakovrising.Utils.Log("Muhafiz varsayilan silahi kusanilamadi: class="
+            .. itemClassId .. ", item=" .. tostring(itemId)
+            .. ", sonuc=" .. tostring(equipResult))
+        return false
+    end
+
+    nebakovrising.Utils.Log("Muhafiz varsayilan silahi olusturuldu ve kusanildi: "
+        .. "entity=" .. tostring(entity.id) .. ", class=" .. itemClassId
+        .. ", item=" .. tostring(itemId))
+    return true
+end
+
 local function logFactionState(entity, requestedFaction)
     local actualFaction, playerFaction, reaction = readFactionState(entity)
     nebakovrising.Utils.Log("NPC faction requested=" .. tostring(requestedFaction)
@@ -225,7 +347,18 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
         entity = System.GetEntityByName(entityName)
     end
     if entity then
+        local castleUtils = nebakovrising.CastleUtils
+        if castleUtils and castleUtils.IsNpcEquipmentPreserved
+            and castleUtils.IsNpcEquipmentPreserved(entityName) then
+            nebakovrising.Utils.Log("NPC oyuncu ekipmani korundugu icin varsayilan ekipman preset'i uygulanmadi: "
+                .. tostring(entityName))
+            return true
+        end
+
         local applied = applyGuardClothingPreset(entity)
+        if applied then
+            applyGuardWeaponItem(entity)
+        end
 
         if applied and enforceLater ~= false
             and not entity._nebakovFinalClothingEnforcementScheduled then

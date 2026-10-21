@@ -214,7 +214,7 @@ function CastleUtils.LogPersistentNpcState()
         .. ", kayitSayisi=" .. tostring(recordCount))
 end
 
-function CastleUtils.MarkNpcEquipmentModified(npc)
+function CastleUtils.MarkNpcEquipmentModified(npc, receivedItemIds, removedItemIds)
     if not npc then return false end
     local entityName
     if npc.GetName then
@@ -232,8 +232,189 @@ function CastleUtils.MarkNpcEquipmentModified(npc)
         return false
     end
     record.preserveEquipment = true
-    log("NPC oyuncu ekipmani save-load sonrasi korunacak: " .. entityName)
+    record.playerEquipmentClasses = type(record.playerEquipmentClasses) == "table"
+        and record.playerEquipmentClasses or {}
+
+    local function updateItemClasses(itemIds, delta)
+        if type(itemIds) ~= "table" then return end
+        if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+            log("Oyuncu ekipman siniflari kaydedilemedi: ItemManager.GetItem API'si kullanilamiyor.")
+            return
+        end
+
+        for _, itemId in ipairs(itemIds) do
+            local ok, item = pcall(ItemManager.GetItem, itemId)
+            if not ok or type(item) ~= "table" or type(item.class) ~= "string" then
+                log("Oyuncu ekipman sinifi kaydedilemedi: item="
+                    .. tostring(itemId) .. ", sonuc=" .. tostring(item))
+            else
+                local classKey = string.lower(string.gsub(item.class, "%-", ""))
+                local equipmentData = nebakovrising.EquipmentData
+                local isEquipment = equipmentData
+                    and ((equipmentData.items and equipmentData.items[classKey])
+                        or (equipmentData.weaponClasses
+                            and equipmentData.weaponClasses[classKey]))
+                if isEquipment then
+                    local entry = record.playerEquipmentClasses[classKey]
+                    local count = type(entry) == "table"
+                        and tonumber(entry.count) or 0
+                    count = math.max(0, count + delta)
+                    if count == 0 then
+                        record.playerEquipmentClasses[classKey] = nil
+                    else
+                        record.playerEquipmentClasses[classKey] = {
+                            class = item.class,
+                            count = count,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    updateItemClasses(receivedItemIds, 1)
+    updateItemClasses(removedItemIds, -1)
+    log("NPC oyuncu ekipmani kalici kayda yazildi ve yeniden kusanim icin izlenecek: "
+        .. entityName)
     return true
+end
+
+function CastleUtils.IsNpcEquipmentPreserved(entityName)
+    if type(entityName) ~= "string" or entityName == "" then
+        return false
+    end
+    local records = getPersistentRecords(false)
+    local record = records and records[entityName]
+    return type(record) == "table" and record.preserveEquipment == true
+end
+
+function CastleUtils.EnsurePlayerEquipmentEquipped()
+    local records = getPersistentRecords(false)
+    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        if not CastleUtils._playerEquipmentApiWarning then
+            CastleUtils._playerEquipmentApiWarning = true
+            log("Oyuncu ekipmani korunamiyor: ItemManager.GetItem API'si kullanilamiyor.")
+        end
+        Script.SetTimerForFunction(
+            5000,
+            "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
+        )
+        return
+    end
+
+    for entityName, record in pairs(records or {}) do
+        local preservedClasses = type(record) == "table"
+            and record.playerEquipmentClasses
+        if type(record) == "table" and record.managed
+            and type(preservedClasses) == "table" then
+            local entityId = System.GetEntityIdByName(entityName)
+            local npc = entityId and System.GetEntity(entityId)
+            local actor = npc and npc.actor
+            local inventory = npc and npc.inventory
+            local npcWuid = npc and npc.this and npc.this.id
+            local bedState = npcWuid and CastleUtils.GetBedWalkState(npcWuid)
+
+            if actor and inventory
+                and bedState ~= "requested"
+                and bedState ~= "active"
+                and bedState ~= "completed"
+                and type(actor.EquipInventoryItem) == "function"
+                and type(inventory.GetInventoryTable) == "function" then
+                local isUnavailable = false
+                if type(actor.IsDead) == "function" then
+                    local ok, value = pcall(actor.IsDead, actor)
+                    isUnavailable = ok and value == true
+                end
+                if not isUnavailable and type(actor.IsUnconscious) == "function" then
+                    local ok, value = pcall(actor.IsUnconscious, actor)
+                    isUnavailable = ok and value == true
+                end
+
+                if not isUnavailable then
+                    local ok, inventoryItems = pcall(
+                        inventory.GetInventoryTable,
+                        inventory
+                    )
+                    if not ok or type(inventoryItems) ~= "table" then
+                        log("Oyuncu ekipmani kontrol edilemedi: NPC="
+                            .. tostring(entityName) .. ", sonuc="
+                            .. tostring(inventoryItems))
+                    else
+                        local remaining = {}
+                        for classKey, entry in pairs(preservedClasses) do
+                            if type(entry) == "table" and type(entry.class) == "string" then
+                                remaining[classKey] = math.max(
+                                    0,
+                                    tonumber(entry.count) or 0
+                                )
+                            end
+                        end
+
+                        local itemsToEquip = {}
+                        local equipmentData = nebakovrising.EquipmentData
+                        for _, itemId in pairs(inventoryItems) do
+                            local itemOk, item = pcall(ItemManager.GetItem, itemId)
+                            if itemOk and type(item) == "table"
+                                and type(item.class) == "string" then
+                                local classKey = string.lower(
+                                    string.gsub(item.class, "%-", "")
+                                )
+                                if (remaining[classKey] or 0) > 0 then
+                                    local indexedItem = equipmentData
+                                        and equipmentData.items
+                                        and equipmentData.items[classKey]
+                                    itemsToEquip[#itemsToEquip + 1] = {
+                                        id = itemId,
+                                        class = item.class,
+                                        slotOrder = indexedItem
+                                            and equipmentData.slotOrder
+                                            and equipmentData.slotOrder[indexedItem.slot]
+                                            or 999,
+                                    }
+                                    remaining[classKey] = remaining[classKey] - 1
+                                end
+                            end
+                        end
+
+                        table.sort(itemsToEquip, function(left, right)
+                            if left.slotOrder ~= right.slotOrder then
+                                return left.slotOrder < right.slotOrder
+                            end
+                            return tostring(left.class) < tostring(right.class)
+                        end)
+
+                        local equippedCount = 0
+                        for _, item in ipairs(itemsToEquip) do
+                            local equipOk, result = pcall(
+                                actor.EquipInventoryItem,
+                                actor,
+                                item.id
+                            )
+                            if equipOk and result ~= false then
+                                equippedCount = equippedCount + 1
+                            else
+                                log("Oyuncu ekipmani yeniden kusanilamadi: NPC="
+                                    .. tostring(entityName)
+                                    .. ", class=" .. tostring(item.class)
+                                    .. ", sonuc=" .. tostring(result))
+                            end
+                        end
+                        if equippedCount > 0 then
+                            log("Oyuncu ekipmani yeniden kusanildi: NPC="
+                                .. tostring(entityName)
+                                .. ", item=" .. tostring(equippedCount))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- NPCs can drop runtime gear during LOD changes; re-offer only tracked gear classes.
+    Script.SetTimerForFunction(
+        5000,
+        "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
+    )
 end
 
 function CastleUtils.RemoveManagedNpcRecord(entityName)
@@ -1039,6 +1220,87 @@ function CastleUtils.SetBedWalkState(npcWuid, state)
     return true
 end
 
+function CastleUtils.UnequipSleepingArmor(entity)
+    local actor = entity and entity.actor
+    local inventory = entity and entity.inventory
+    if not actor or type(actor.UnequipInventoryItem) ~= "function" then
+        log("Uyku oncesi ekipman cikarilamadi: Actor.UnequipInventoryItem API'si kullanilamiyor.")
+        return false
+    end
+
+    if not inventory or type(inventory.GetInventoryTable) ~= "function" then
+        log("Uyku oncesi ekipman cikarilamadi: Inventory.GetInventoryTable API'si kullanilamiyor.")
+        return false
+    end
+    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
+        log("Uyku oncesi ekipman cikarilamadi: ItemManager.GetItem API'si kullanilamiyor.")
+        return false
+    end
+
+    local ok, inventoryItems = pcall(inventory.GetInventoryTable, inventory)
+    if not ok or type(inventoryItems) ~= "table" then
+        log("Uyku oncesi ekipman cikarilamadi: envanter okunamadi: "
+            .. tostring(inventoryItems))
+        return false
+    end
+
+    local equipmentData = nebakovrising.EquipmentData
+    if not equipmentData or type(equipmentData.items) ~= "table" then
+        log("Uyku oncesi ekipman cikarilamadi: EquipmentData indeksi kullanilamiyor.")
+        return false
+    end
+
+    local armorSlots = {
+        [22] = true, [31] = true, [32] = true, [33] = true,
+        [34] = true, [37] = true, [38] = true, [39] = true,
+        [41] = true, [42] = true,
+    }
+    local itemCount = 0
+    local failedCount = 0
+    for _, itemId in pairs(inventoryItems) do
+        local itemOk, item = pcall(ItemManager.GetItem, itemId)
+        if not itemOk or type(item) ~= "table" or type(item.class) ~= "string" then
+            failedCount = failedCount + 1
+            log("Uyku oncesi esya sinifi okunamadi: item="
+                .. tostring(itemId) .. ", sonuc=" .. tostring(item))
+        else
+            local classKey = string.lower(string.gsub(item.class, "%-", ""))
+            local indexedItem = equipmentData.items[classKey]
+            local slot = indexedItem and indexedItem.slot
+            local isArmor = slot and armorSlots[slot]
+            local isWeapon = equipmentData.weaponClasses[classKey] == true
+            if isArmor or isWeapon then
+                itemCount = itemCount + 1
+                local unequipOk, result = pcall(
+                    actor.UnequipInventoryItem,
+                    actor,
+                    itemId
+                )
+                if not unequipOk or result == false then
+                    failedCount = failedCount + 1
+                    log("Uyku oncesi esya cikarilamadi: tur="
+                        .. (isWeapon and "weapon" or "armor")
+                        .. ", class=" .. tostring(item.class)
+                        .. ", slot=" .. tostring(slot)
+                        .. ", item=" .. tostring(itemId)
+                        .. ", sonuc=" .. tostring(result))
+                else
+                    log("Uyku oncesi esya cikarildi: tur="
+                        .. (isWeapon and "weapon" or "armor")
+                        .. ", class=" .. tostring(item.class)
+                        .. ", slot=" .. tostring(slot)
+                        .. ", item=" .. tostring(itemId))
+                end
+            end
+        end
+    end
+
+    log("Uyku oncesi ekipman cikarimi tamamlandi: entity="
+        .. tostring(entity.id) .. ", hedef esya=" .. tostring(itemCount)
+        .. ", hata=" .. tostring(failedCount))
+    return failedCount == 0
+end
+
 function CastleUtils.MarkBedWalkInterrupted(npcWuid)
     if npcWuid == nil then return false end
     local key = tostring(npcWuid)
@@ -1151,6 +1413,10 @@ function CastleUtils.OnGameplayStarted()
     Script.SetTimerForFunction(
         10000,
         "nebakovrising.CastleUtils.SnapshotManagedNpcPositions"
+    )
+    Script.SetTimerForFunction(
+        5000,
+        "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
     )
 end
 
