@@ -528,12 +528,12 @@
                                                 </StanceElement>
                                             </Sequence>
                                             <Sequence>
-                                                <While doFail="false" propagateChildFail="false" condition="$mealSeatAcquired == false &amp; $mealSeatWaitTicks &lt; 5">
+                                                <While doFail="false" propagateChildFail="false" condition="$mealSeatAcquired == false &amp; $mealSeatWaitTicks &lt; 1000000">
                                                     <Sequence>
                                                         <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
                                                         <ExecuteLua code="
                                                             data.mealSeatWaitTicks = data.mealSeatWaitTicks + 1
-                                                            if data.mealSeatWaitTicks >= 5 and not data.mealSeatAcquired then
+                                                            if data.mealSeatWaitTicks >= 1000000 and not data.mealSeatAcquired then
                                                                 data.mealSeatTimedOut = true
                                                                 System.LogAlways('[nebakovrising] NPC assigned bench seating timed out; bench='
                                                                     .. tostring(data.mealBenchWuid)
