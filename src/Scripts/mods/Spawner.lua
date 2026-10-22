@@ -76,46 +76,47 @@ local function readFactionState(entity)
     return actualFaction, playerFaction, reaction
 end
 
-local guardPresetItemIds = {
-    "4c7218e8-78c2-49cf-b88a-06f567c24e5a",
-    "ffe35c10-6a19-42f3-9960-1c4801fd1fbf",
-    "7ae64aa3-444f-4f10-b05d-4a943c965551",
-}
+local function getRole(entityName)
+    return nebakovrising.Roles.Resolve(entityName)
+end
 
-local function verifyGuardPresetItems(entity)
+local function verifyPresetItems(entity, itemClassIds)
+    if type(itemClassIds) ~= "table" then
+        return
+    end
     if not entity.inventory or type(entity.inventory.FindItem) ~= "function" then
-        nebakovrising.Utils.Log("Muhafiz preset esyalari dogrulanamadi: "
+        nebakovrising.Utils.Log("NPC preset esyalari dogrulanamadi: "
             .. "Inventory.FindItem API'si yok.")
         return
     end
 
-    for _, itemClassId in ipairs(guardPresetItemIds) do
+    for _, itemClassId in ipairs(itemClassIds) do
         local ok, itemId = pcall(function()
             return entity.inventory:FindItem(itemClassId)
         end)
         if not ok then
-            nebakovrising.Utils.Log("Muhafiz preset esyasi sorgulanamadi: "
+            nebakovrising.Utils.Log("NPC preset esyasi sorgulanamadi: "
                 .. tostring(itemClassId) .. ", hata=" .. tostring(itemId))
         else
-            nebakovrising.Utils.Log("Muhafiz preset esyasi dogrulamasi: class="
+            nebakovrising.Utils.Log("NPC preset esyasi dogrulamasi: class="
                 .. tostring(itemClassId) .. ", item=" .. tostring(itemId))
         end
     end
 end
 
-local function applyGuardClothingPreset(entity)
+local function applyClothingPreset(entity, role)
     if not entity or not entity.actor then
-        nebakovrising.Utils.Log("Muhafiz kiyafet preset'i uygulanamadi: actor bulunamadi.")
+        nebakovrising.Utils.Log("NPC kiyafet preset'i uygulanamadi: actor bulunamadi.")
         return false
     end
 
-    local preset = nebakovrising.Config.defaultGuardClothingPreset
+    local preset = role and role.clothingPreset
     if type(preset) ~= "string" or preset == "" then
-        nebakovrising.Utils.Log("Muhafiz kiyafet preset'i uygulanamadi: preset GUID bos.")
+        nebakovrising.Utils.Log("NPC kiyafet preset'i uygulanamadi: preset GUID bos.")
         return false
     end
     if type(entity.actor.EquipClothingPreset) ~= "function" then
-        nebakovrising.Utils.Log("Muhafiz kiyafet preset'i uygulanamadi: "
+        nebakovrising.Utils.Log("NPC kiyafet preset'i uygulanamadi: "
             .. "Actor.EquipClothingPreset API'si yok.")
         return false
     end
@@ -130,57 +131,76 @@ local function applyGuardClothingPreset(entity)
         entity.actor:EquipClothingPreset(preset)
     end)
     if not ok then
-        nebakovrising.Utils.Log("Muhafiz kiyafet preset cagrisi hata verdi: "
+        nebakovrising.Utils.Log("NPC kiyafet preset cagrisi hata verdi: "
             .. "entity=" .. tostring(entity.id) .. ", preset=" .. preset
             .. ", sonuc=" .. tostring(result))
         return false
     end
 
     entity._nebakovBaseClothingPreset = preset
-    nebakovrising.Utils.Log("Muhafiz kiyafet preset cagrisi tamamlandi: "
+    nebakovrising.Utils.Log("NPC kiyafet preset cagrisi tamamlandi: "
         .. "entity=" .. tostring(entity.id) .. ", preset=" .. preset)
-    verifyGuardPresetItems(entity)
+    verifyPresetItems(entity, role.clothingItemIds)
     return true
 end
 
-local function applyGuardWeaponItem(entity)
+-- Rolun weaponPreset'i uygulanir; weaponClassId varsa yalnizca o silah sinifi
+-- envanterde tutulur (diger silahlar kaldirilir).
+local function applyWeapon(entity, role)
     if not entity or not entity.actor then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: actor bulunamadi.")
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: actor bulunamadi.")
         return false
     end
+    local weaponPreset = role and role.weaponPreset
+    local itemClassId = role and role.weaponClassId
+    if not weaponPreset and not itemClassId then
+        return true
+    end
+
+    local presetApplied = false
+    if type(weaponPreset) == "string" and weaponPreset ~= ""
+        and type(entity.actor.EquipWeaponPreset) == "function" then
+        local presetOk, presetResult = pcall(entity.actor.EquipWeaponPreset, entity.actor, weaponPreset)
+        if presetOk and presetResult ~= false then
+            presetApplied = true
+            nebakovrising.Utils.Log("NPC silah preset'i uygulandi: entity=" .. tostring(entity.id)
+                .. ", preset=" .. weaponPreset)
+        else
+            nebakovrising.Utils.Log("NPC silah preset'i uygulanamadi: preset=" .. weaponPreset
+                .. ", sonuc=" .. tostring(presetResult))
+        end
+    end
+    if not itemClassId then
+        return presetApplied
+    end
+
     local inventory = entity.inventory
     if not inventory or type(inventory.GetInventoryTable) ~= "function"
         or type(inventory.FindItem) ~= "function"
         or type(inventory.CreateItem) ~= "function"
         or type(inventory.DeleteItemOfClass) ~= "function" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: envanter API'leri kullanilamiyor.")
-        return false
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: envanter API'leri kullanilamiyor.")
+        return presetApplied
     end
     if not ItemManager or type(ItemManager.GetItem) ~= "function" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: ItemManager.GetItem API'si kullanilamiyor.")
-        return false
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: ItemManager.GetItem API'si kullanilamiyor.")
+        return presetApplied
     end
     if type(entity.actor.EquipInventoryItem) ~= "function"
         or type(entity.actor.UnequipInventoryItem) ~= "function" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: Actor ekipman API'leri kullanilamiyor.")
-        return false
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: Actor ekipman API'leri kullanilamiyor.")
+        return presetApplied
     end
     local equipmentData = nebakovrising.EquipmentData
     if not equipmentData or type(equipmentData.weaponClasses) ~= "table" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: silah sinifi indeksi kullanilamiyor.")
-        return false
-    end
-
-    local itemClassId = nebakovrising.Config.defaultGuardWeaponClassId
-    if type(itemClassId) ~= "string" or itemClassId == "" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: item class ID bos.")
-        return false
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: silah sinifi indeksi kullanilamiyor.")
+        return presetApplied
     end
 
     local itemClassKey = string.lower(string.gsub(itemClassId, "%-", ""))
     local ok, inventoryItems = pcall(inventory.GetInventoryTable, inventory)
     if not ok or type(inventoryItems) ~= "table" then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi uygulanamadi: envanter okunamadi: "
+        nebakovrising.Utils.Log("NPC silahi uygulanamadi: envanter okunamadi: "
             .. tostring(inventoryItems))
         return false
     end
@@ -198,7 +218,7 @@ local function applyGuardWeaponItem(entity)
                     itemId
                 )
                 if not unequipOk or unequipResult == false then
-                    nebakovrising.Utils.Log("Eski muhafiz silahi unequip cagrisi basarisiz; envanterden kaldirma denenecek: class="
+                    nebakovrising.Utils.Log("Eski NPC silahi unequip cagrisi basarisiz; envanterden kaldirma denenecek: class="
                         .. tostring(item.class) .. ", item=" .. tostring(itemId)
                         .. ", sonuc=" .. tostring(unequipResult))
                 end
@@ -214,7 +234,7 @@ local function applyGuardWeaponItem(entity)
             99
         )
         if not removeOk or removeResult == false then
-            nebakovrising.Utils.Log("Eski muhafiz silahi envanterden silinemedi: class="
+            nebakovrising.Utils.Log("Eski NPC silahi envanterden silinemedi: class="
                 .. tostring(className) .. ", sonuc=" .. tostring(removeResult))
             return false
         end
@@ -222,7 +242,7 @@ local function applyGuardWeaponItem(entity)
 
     local findOk, itemId = pcall(inventory.FindItem, inventory, itemClassId)
     if not findOk then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi aranirken hata olustu: "
+        nebakovrising.Utils.Log("NPC silahi aranirken hata olustu: "
             .. tostring(itemId))
         return false
     end
@@ -235,14 +255,14 @@ local function applyGuardWeaponItem(entity)
             1
         )
         if not createOk or createResult == false then
-            nebakovrising.Utils.Log("Muhafiz varsayilan silahi envantere eklenemedi: class="
+            nebakovrising.Utils.Log("NPC silahi envantere eklenemedi: class="
                 .. itemClassId .. ", sonuc=" .. tostring(createResult))
             return false
         end
         findOk, itemId = pcall(inventory.FindItem, inventory, itemClassId)
     end
     if not findOk or not itemId then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi envanterde dogrulanamadi: class="
+        nebakovrising.Utils.Log("NPC silahi envanterde dogrulanamadi: class="
             .. itemClassId .. ", sonuc=" .. tostring(itemId))
         return false
     end
@@ -253,13 +273,13 @@ local function applyGuardWeaponItem(entity)
         itemId
     )
     if not equipOk or equipResult == false then
-        nebakovrising.Utils.Log("Muhafiz varsayilan silahi kusanilamadi: class="
+        nebakovrising.Utils.Log("NPC silahi kusanilamadi: class="
             .. itemClassId .. ", item=" .. tostring(itemId)
             .. ", sonuc=" .. tostring(equipResult))
         return false
     end
 
-    nebakovrising.Utils.Log("Muhafiz varsayilan silahi olusturuldu ve kusanildi: "
+    nebakovrising.Utils.Log("NPC silahi olusturuldu ve kusanildi: "
         .. "entity=" .. tostring(entity.id) .. ", class=" .. itemClassId
         .. ", item=" .. tostring(itemId))
     return true
@@ -274,8 +294,12 @@ local function logFactionState(entity, requestedFaction)
     return actualFaction
 end
 
-function Spawner.ApplyGuardWeaponDrawContext(entityName, retriesLeft)
+function Spawner.ApplyWeaponDrawContext(entityName, retriesLeft)
     retriesLeft = retriesLeft or 0
+    local role = getRole(entityName)
+    if role and role.weaponDrawContext == false then
+        return
+    end
     local entity = System.GetEntityByName(entityName)
     if entity and entity.soul then
         local soul = entity.soul
@@ -293,18 +317,18 @@ function Spawner.ApplyGuardWeaponDrawContext(entityName, retriesLeft)
                 local checkOk, hasContext = pcall(soul.HasScriptContext, soul, "crime_ignorePlayersDrawnWeapon")
                 if checkOk and hasContext then
                     entity._nebakovWeaponDrawContextApplied = true
-                    nebakovrising.Utils.Log("Muhafiz silah-cekme tepki baglami uygulandi: "
+                    nebakovrising.Utils.Log("NPC silah-cekme tepki baglami uygulandi: "
                         .. tostring(entityName))
                     return
                 end
             elseif not setOk and not entity._nebakovWeaponDrawContextWarned then
                 entity._nebakovWeaponDrawContextWarned = true
-                nebakovrising.Utils.Log("Muhafiz silah-cekme tepki baglami ayarlanamadi: "
+                nebakovrising.Utils.Log("NPC silah-cekme tepki baglami ayarlanamadi: "
                     .. tostring(setResult))
             end
         elseif not entity._nebakovWeaponDrawContextWarned then
             entity._nebakovWeaponDrawContextWarned = true
-            nebakovrising.Utils.Log("Muhafiz silah-cekme tepki baglami ayarlanamadi: "
+            nebakovrising.Utils.Log("NPC silah-cekme tepki baglami ayarlanamadi: "
                 .. "Soul.SetScriptContext API'si yok.")
         end
     end
@@ -312,28 +336,28 @@ function Spawner.ApplyGuardWeaponDrawContext(entityName, retriesLeft)
     if retriesLeft > 0 and Script and type(Script.SetTimerForFunction) == "function" then
         scheduleEntityCallback(
             500,
-            "nebakovrising.Spawner.RetryGuardWeaponDrawContext",
+            "nebakovrising.Spawner.RetryWeaponDrawContext",
             entityName,
             retriesLeft - 1
         )
     elseif not entity and retriesLeft <= 0 then
-        nebakovrising.Utils.Log("Muhafiz silah-cekme tepki baglami ayarlanamadi: entity bulunamadi: "
+        nebakovrising.Utils.Log("NPC silah-cekme tepki baglami ayarlanamadi: entity bulunamadi: "
             .. tostring(entityName))
     elseif entity and not entity._nebakovWeaponDrawContextApplied
         and not entity._nebakovWeaponDrawContextWarned then
         entity._nebakovWeaponDrawContextWarned = true
-        nebakovrising.Utils.Log("Muhafiz silah-cekme tepki baglami dogrulanamadi: "
+        nebakovrising.Utils.Log("NPC silah-cekme tepki baglami dogrulanamadi: "
             .. tostring(entityName))
     end
 end
 
-function Spawner.RetryGuardWeaponDrawContext(userData)
+function Spawner.RetryWeaponDrawContext(userData)
     local entityName, retriesLeft = readTimerUserData(
         userData,
-        "RetryGuardWeaponDrawContext"
+        "RetryWeaponDrawContext"
     )
     if entityName then
-        Spawner.ApplyGuardWeaponDrawContext(entityName, retriesLeft)
+        Spawner.ApplyWeaponDrawContext(entityName, retriesLeft)
     end
 end
 
@@ -422,8 +446,9 @@ local function reequipPreservedPlayerItems(entity, entityName, preservedClasses)
     return missingCount == 0 and equippedCount == #itemsToEquip
 end
 
-function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
+function Spawner.ApplyClothingPreset(entityName, retriesLeft, enforceLater)
     retriesLeft = retriesLeft or 0
+    local role = getRole(entityName)
     local entity
     if System and type(System.GetEntity) == "function" then
         entity = System.GetEntity(entityName)
@@ -445,7 +470,7 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
             return true
         end
 
-        local applied = applyGuardClothingPreset(entity)
+        local applied = applyClothingPreset(entity, role)
         if applied then
             if preservePlayerEquipment then
                 applied = reequipPreservedPlayerItems(
@@ -454,7 +479,7 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
                     preservedClasses
                 )
             else
-                applyGuardWeaponItem(entity)
+                applyWeapon(entity, role)
             end
         end
 
@@ -463,7 +488,7 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
             entity._nebakovFinalClothingEnforcementScheduled = true
             if not scheduleEntityCallback(
                 1,
-                "nebakovrising.Spawner.ReapplyGuardClothingPreset",
+                "nebakovrising.Spawner.ReapplyClothingPreset",
                 entityName,
                 0
             ) then
@@ -473,7 +498,7 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
         if not applied and retriesLeft > 0 then
             scheduleEntityCallback(
                 1000,
-                "nebakovrising.Spawner.RetryGuardClothingPreset",
+                "nebakovrising.Spawner.RetryClothingPreset",
                 entityName,
                 retriesLeft - 1
             )
@@ -484,63 +509,64 @@ function Spawner.ApplyGuardClothingPreset(entityName, retriesLeft, enforceLater)
     if retriesLeft > 0 and Script and type(Script.SetTimerForFunction) == "function" then
         scheduleEntityCallback(
             500,
-            "nebakovrising.Spawner.RetryGuardClothingPreset",
+            "nebakovrising.Spawner.RetryClothingPreset",
             entityName,
             retriesLeft - 1
         )
     elseif not entity and retriesLeft <= 0 then
-        nebakovrising.Utils.Log("Muhafiz varsayilan kiyafet preset'i uygulanamadi: entity bulunamadi: "
+        nebakovrising.Utils.Log("NPC kiyafet preset'i uygulanamadi: entity bulunamadi: "
             .. tostring(entityName))
     end
 end
 
-function Spawner.ReapplyGuardClothingPreset(userData)
+function Spawner.ReapplyClothingPreset(userData)
     local entityName = type(userData) == "table" and userData.entityName or nil
     if type(entityName) ~= "string" then
         nebakovrising.Utils.Log("Gecikmeli kiyafet preset'i tekrar uygulamasi gecersiz veri aldi.")
         return
     end
-    Spawner.ApplyGuardClothingPreset(entityName, 0, false)
+    Spawner.ApplyClothingPreset(entityName, 0, false)
 end
 
-function Spawner.RetryGuardClothingPreset(userData)
+function Spawner.RetryClothingPreset(userData)
     local entityName, retriesLeft = readTimerUserData(
         userData,
-        "RetryGuardClothingPreset"
+        "RetryClothingPreset"
     )
     if entityName then
-        Spawner.ApplyGuardClothingPreset(entityName, retriesLeft)
+        Spawner.ApplyClothingPreset(entityName, retriesLeft)
     end
 end
 
-function Spawner.ScheduleGuardClothingPreset(entityName, retriesLeft)
+function Spawner.ScheduleClothingPreset(entityName, retriesLeft)
     local scheduled = scheduleEntityCallback(
         1000,
-        "nebakovrising.Spawner.ApplyGuardClothingPresetDeferred",
+        "nebakovrising.Spawner.ApplyClothingPresetDeferred",
         entityName,
         retriesLeft or 0
     )
     if not scheduled then
-        nebakovrising.Utils.Log("Muhafiz kiyafet preset'i geciktirilemedi; varsayilan preset korunuyor: "
+        nebakovrising.Utils.Log("NPC kiyafet preset'i geciktirilemedi; varsayilan preset korunuyor: "
             .. tostring(entityName))
     end
     return scheduled
 end
 
-function Spawner.ApplyGuardClothingPresetDeferred(userData)
+function Spawner.ApplyClothingPresetDeferred(userData)
     local entityName, retriesLeft = readTimerUserData(
         userData,
-        "ApplyGuardClothingPresetDeferred"
+        "ApplyClothingPresetDeferred"
     )
     if entityName then
-        Spawner.ApplyGuardClothingPreset(entityName, retriesLeft)
+        Spawner.ApplyClothingPreset(entityName, retriesLeft)
     end
 end
 
-function Spawner.ApplyGuardFaction(entityName, retriesLeft)
+function Spawner.ApplyFaction(entityName, retriesLeft)
     retriesLeft = retriesLeft or 0
-    local guardFaction = nebakovrising.Config.guardFaction
-    if not guardFaction or not AI or type(AI.SetFactionOf) ~= "function" then
+    local role = getRole(entityName)
+    local faction = role and role.faction
+    if not faction or not AI or type(AI.SetFactionOf) ~= "function" then
         nebakovrising.Utils.Log("NPC faction'i ayarlanamadi: AI.SetFactionOf API'si kullanilamiyor.")
         return
     end
@@ -550,7 +576,7 @@ function Spawner.ApplyGuardFaction(entityName, retriesLeft)
         if retriesLeft > 0 and Script and type(Script.SetTimerForFunction) == "function" then
             scheduleEntityCallback(
                 500,
-                "nebakovrising.Spawner.RetryGuardFaction",
+                "nebakovrising.Spawner.RetryFaction",
                 entityName,
                 retriesLeft - 1
             )
@@ -560,16 +586,16 @@ function Spawner.ApplyGuardFaction(entityName, retriesLeft)
         return
     end
 
-    local setOk, setResult = pcall(AI.SetFactionOf, entity.id, guardFaction)
+    local setOk, setResult = pcall(AI.SetFactionOf, entity.id, faction)
     local actualFaction = readFactionState(entity)
-    if actualFaction == guardFaction then
-        logFactionState(entity, guardFaction)
+    if actualFaction == faction then
+        logFactionState(entity, faction)
         return
     end
     if retriesLeft > 0 and Script and type(Script.SetTimerForFunction) == "function" then
         scheduleEntityCallback(
             500,
-            "nebakovrising.Spawner.RetryGuardFaction",
+            "nebakovrising.Spawner.RetryFaction",
             entityName,
             retriesLeft - 1
         )
@@ -577,24 +603,48 @@ function Spawner.ApplyGuardFaction(entityName, retriesLeft)
         nebakovrising.Utils.Log("NPC faction'i dogrulanamadi: " .. tostring(entityName)
             .. ", actual=" .. tostring(actualFaction)
             .. ", set-error=" .. tostring(setOk and "" or setResult))
-        logFactionState(entity, guardFaction)
+        logFactionState(entity, faction)
     end
 end
 
-function Spawner.RetryGuardFaction(userData)
-    local entityName, retriesLeft = readTimerUserData(userData, "RetryGuardFaction")
+function Spawner.RetryFaction(userData)
+    local entityName, retriesLeft = readTimerUserData(userData, "RetryFaction")
     if entityName then
-        Spawner.ApplyGuardFaction(entityName, retriesLeft)
+        Spawner.ApplyFaction(entityName, retriesLeft)
     end
 end
 
+Spawner._lastSoul = Spawner._lastSoul or {}
+
+-- Rolun havuzundan (AppearancePools.lua) rastgele soul GUID'i; bir onceki secimi tekrarlamaz.
+function Spawner.PickAppearanceSoul(role)
+    local pools = nebakovrising.AppearancePools
+    local pool = pools and role and pools[role.appearancePool or role.id]
+    if type(pool) ~= "table" or #pool == 0 then return nil end
+    local last = Spawner._lastSoul[role.id]
+    local index = math.random(#pool)
+    if #pool > 1 and pool[index] == last then
+        index = index % #pool + 1
+    end
+    Spawner._lastSoul[role.id] = pool[index]
+    return pool[index]
+end
+
+-- Ortak spawn akisi. Rol, isimden Roles.Resolve ile cozulur; rol onceden
+-- Roles.Assign ile kaydedilmelidir (SpawnRole bunu yapar).
 function Spawner.SpawnNpc(name, pos, dir, props)
+    local role = getRole(name)
     local spawnProperties = {}
     for key, value in pairs(nebakovrising.Config.npcDefaults or {}) do
         spawnProperties[key] = value
     end
     for key, value in pairs(props or {}) do
         spawnProperties[key] = value
+    end
+    -- Gorunum soul'a bagli (Storm appearance kurallari); havuzdan rastgele soul sec.
+    if not (props and props.guidSharedSoulId) then
+        local soul = Spawner.PickAppearanceSoul(role)
+        if soul then spawnProperties.guidSharedSoulId = soul end
     end
     spawnProperties.bSaved_by_game = 1
     spawnProperties.bSerialize = 1
@@ -613,13 +663,14 @@ function Spawner.SpawnNpc(name, pos, dir, props)
         nebakovrising.Utils.Log("Spawn HATASI: " .. tostring(result))
         return nil
     end
-    Spawner.ApplyGuardWeaponDrawContext(name, 12)
-    Spawner.ApplyGuardWeaponDrawContext(name, 12)
-    Spawner.ScheduleGuardClothingPreset(name, 12)
-    if nebakovrising.Config.guardFaction then
+    if role.weaponDrawContext ~= false then
+        Spawner.ApplyWeaponDrawContext(name, 12)
+    end
+    Spawner.ScheduleClothingPreset(name, 12)
+    if role.faction then
         if not scheduleEntityCallback(
                 500,
-                "nebakovrising.Spawner.RetryGuardFaction",
+                "nebakovrising.Spawner.RetryFaction",
                 name,
                 12
             ) then
@@ -628,7 +679,7 @@ function Spawner.SpawnNpc(name, pos, dir, props)
     end
 
     if NpcInteraction and NpcInteraction.Inject then
-        local injectOk, injected = pcall(NpcInteraction.Inject, result)
+        local injectOk, injected = pcall(NpcInteraction.Inject, result, role.interaction)
         if not injectOk or not injected then
             nebakovrising.Utils.Log("NPC etkilesimi eklenemedi: " .. tostring(injected))
         end
@@ -641,21 +692,34 @@ function Spawner.SpawnNpc(name, pos, dir, props)
     if System and type(System.GetEntity) == "function" then
         spawnedEntity = System.GetEntity(result.id) or result
     end
-    applyGuardClothingPreset(spawnedEntity)
+    applyClothingPreset(spawnedEntity, role)
+
+    if type(role.onSpawned) == "function" then
+        local hookOk, hookResult = pcall(role.onSpawned, spawnedEntity, name)
+        if not hookOk then
+            nebakovrising.Utils.Log("Rol onSpawned kancasi hata verdi: " .. tostring(hookResult))
+        end
+    end
 
     return result
 end
 
-function Spawner.SpawnTestNpc()
+function Spawner.SpawnRole(roleId)
+    local role = nebakovrising.Roles.Get(roleId)
+    if not role then
+        nebakovrising.Utils.Log("Bilinmeyen rol: " .. tostring(roleId))
+        return nil
+    end
     local pos = nebakovrising.Utils.GetPlayerPos()
     if not pos then
         nebakovrising.Utils.Log("Oyuncu bulunamadi, once bir save yukle.")
-        return
+        return nil
     end
     local name
     repeat
         Spawner._counter = Spawner._counter + 1
-        name = "nebakovrising_TestNpc_" .. Spawner._counter
+        name = role.namePrefix .. Spawner._counter
     until not System.GetEntityIdByName(name)
-    Spawner.SpawnNpc(name, { x = pos.x + 2, y = pos.y, z = pos.z })
+    nebakovrising.Roles.Assign(name, role.id)
+    return Spawner.SpawnNpc(name, { x = pos.x + 2, y = pos.y, z = pos.z })
 end

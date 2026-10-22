@@ -1,0 +1,456 @@
+<?xml version="1.0"?>
+<!DOCTYPE storm SYSTEM "..\storm.dtd">
+<storm>
+    <rules>
+        <rule name="appearance_nebakov_guard_melee_01">
+            <selectors><hasName Name="soul_nebakov_guard_melee_01" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_03" />
+                <setHead name="m_head_058" />
+                <setHair name="m_hair_019_black" />
+                <setBeard name="m_beard_07" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_02">
+            <selectors><hasName Name="soul_nebakov_guard_melee_02" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_042" />
+                <setHair name="m_hair_004_dark_brown" />
+                <setBeard name="m_beard_18" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_03">
+            <selectors><hasName Name="soul_nebakov_guard_melee_03" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_01" />
+                <setHead name="m_head_055" />
+                <setHair name="m_hair_008_black" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_04">
+            <selectors><hasName Name="soul_nebakov_guard_melee_04" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_033" />
+                <setHair name="m_hair_004_dark_grey" />
+                <setBeard name="m_beard_17" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_05">
+            <selectors><hasName Name="soul_nebakov_guard_melee_05" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_019" />
+                <setHair name="m_hair_005_grey" />
+                <setBeard name="m_beard_06" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_06">
+            <selectors><hasName Name="soul_nebakov_guard_melee_06" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_046" />
+                <setHair name="m_hair_003_dark_brown" />
+                <setBeard name="m_beard_19" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_07">
+            <selectors><hasName Name="soul_nebakov_guard_melee_07" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_04" />
+                <setHead name="m_head_079" />
+                <setHair name="m_hair_013_dark_grey" />
+                <setBeard name="m_beard_01" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_08">
+            <selectors><hasName Name="soul_nebakov_guard_melee_08" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_039" />
+                <setHair name="m_hair_011_black" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_09">
+            <selectors><hasName Name="soul_nebakov_guard_melee_09" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_02" />
+                <setHead name="m_head_016" />
+                <setHair name="m_hair_011_light_brown" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_melee_10">
+            <selectors><hasName Name="soul_nebakov_guard_melee_10" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_05" />
+                <setHead name="m_head_004" />
+                <setHair name="m_hair_004_black" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_01">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_01" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_05" />
+                <setHead name="m_head_066" />
+                <setHair name="m_hair_009_dark_brown" />
+                <setBeard name="m_beard_07" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_02">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_02" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_05" />
+                <setHead name="m_head_057" />
+                <setHair name="m_hair_017_black" />
+                <setBeard name="m_beard_16" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_03">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_03" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_03" />
+                <setHead name="m_head_022" />
+                <setHair name="m_hair_003_grey" />
+                <setBeard name="m_beard_10" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_04">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_04" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_02" />
+                <setHead name="m_head_062" />
+                <setHair name="m_hair_009_black" />
+                <setBeard name="m_beard_18" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_05">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_05" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_01" />
+                <setHead name="m_head_059" />
+                <setHair name="m_hair_009_black" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_06">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_06" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_04" />
+                <setHead name="m_head_073" />
+                <setHair name="m_hair_009_black" />
+                <setBeard name="m_beard_16" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_07">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_07" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_005" />
+                <setHair name="m_hair_004_dark_grey" />
+                <setBeard name="m_beard_08" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_08">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_08" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_063" />
+                <setHair name="m_hair_003_grey" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_09">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_09" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_03" />
+                <setHead name="m_head_012" />
+                <setHair name="m_hair_002_dark_brown" />
+                <setBeard name="m_beard_03" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_guard_ranged_10">
+            <selectors><hasName Name="soul_nebakov_guard_ranged_10" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_02" />
+                <setHead name="m_head_053" />
+                <setHair name="m_hair_015_black" />
+                <setBeard name="m_beard_04" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_01">
+            <selectors><hasName Name="soul_nebakov_quartermaster_01" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_old_01" />
+                <setHead name="m_head_054" />
+                <setHair name="m_hair_014_dark_grey" />
+                <setBeard name="m_beard_09" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_02">
+            <selectors><hasName Name="soul_nebakov_quartermaster_02" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_05" />
+                <setHead name="m_head_067" />
+                <setHair name="m_hair_006_grey" />
+                <setBeard name="m_beard_13" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_03">
+            <selectors><hasName Name="soul_nebakov_quartermaster_03" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_old_02" />
+                <setHead name="m_head_075" />
+                <setHair name="m_hair_009_dark_grey" />
+                <setBeard name="m_beard_01" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_04">
+            <selectors><hasName Name="soul_nebakov_quartermaster_04" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_02" />
+                <setHead name="m_head_052" />
+                <setHair name="m_hair_003_dark_grey" />
+                <setBeard name="m_beard_09" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_05">
+            <selectors><hasName Name="soul_nebakov_quartermaster_05" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_01" />
+                <setHead name="m_head_068" />
+                <setHair name="m_hair_003_grey" />
+                <setBeard name="m_beard_19" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_06">
+            <selectors><hasName Name="soul_nebakov_quartermaster_06" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_01" />
+                <setHead name="m_head_065_b00" />
+                <setHair name="m_hair_014_dark_grey" />
+                <setBeard name="m_beard_10" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_07">
+            <selectors><hasName Name="soul_nebakov_quartermaster_07" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_03" />
+                <setHead name="m_head_076" />
+                <setHair name="m_hair_014_dark_grey" />
+                <setBeard name="m_beard_16" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_08">
+            <selectors><hasName Name="soul_nebakov_quartermaster_08" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_01" />
+                <setHead name="m_head_041" />
+                <setHair name="m_hair_015_dark_grey" />
+                <setBeard name="m_beard_14" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_09">
+            <selectors><hasName Name="soul_nebakov_quartermaster_09" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_01" />
+                <setHead name="m_head_013" />
+                <setHair name="m_hair_014_grey" />
+                <setBeard name="m_beard_04" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_quartermaster_10">
+            <selectors><hasName Name="soul_nebakov_quartermaster_10" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_old_06" />
+                <setHead name="m_head_038" />
+                <setHair name="m_hair_015_dark_grey" />
+                <setBeard name="m_beard_12" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_01">
+            <selectors><hasName Name="soul_nebakov_blacksmith_01" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_037" />
+                <setHair name="m_hair_008_dark_brown" />
+                <setBeard name="m_beard_17" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_02">
+            <selectors><hasName Name="soul_nebakov_blacksmith_02" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_01" />
+                <setHead name="m_head_029_b00" />
+                <setHair name="m_hair_006_black" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_03">
+            <selectors><hasName Name="soul_nebakov_blacksmith_03" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_05" />
+                <setHead name="m_head_078" />
+                <setHair name="m_hair_012_black" />
+                <setBeard name="m_beard_17" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_04">
+            <selectors><hasName Name="soul_nebakov_blacksmith_04" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_081" />
+                <setHair name="m_hair_015_black" />
+                <setBeard name="m_beard_16" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_05">
+            <selectors><hasName Name="soul_nebakov_blacksmith_05" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_024" />
+                <setHair name="m_hair_004_dark_grey" />
+                <setBeard name="m_beard_17" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_06">
+            <selectors><hasName Name="soul_nebakov_blacksmith_06" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_045" />
+                <setHair name="m_hair_006_dark_brown" />
+                <setBeard name="m_beard_18" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_07">
+            <selectors><hasName Name="soul_nebakov_blacksmith_07" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="m_head_069" />
+                <setHair name="m_hair_003_grey" />
+                <setBeard name="m_beard_10" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_08">
+            <selectors><hasName Name="soul_nebakov_blacksmith_08" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_02" />
+                <setHead name="m_head_068_b00" />
+                <setHair name="m_hair_009_blonde" />
+                <setBeard name="m_beard_05" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_09">
+            <selectors><hasName Name="soul_nebakov_blacksmith_09" /></selectors>
+            <operations>
+                <setBody name="m_body_roma_02" />
+                <setHead name="m_head_056" />
+                <setHair name="m_hair_005_black" />
+                <setBeard name="m_beard_02" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_blacksmith_10">
+            <selectors><hasName Name="soul_nebakov_blacksmith_10" /></selectors>
+            <operations>
+                <setBody name="m_body_tan_04" />
+                <setHead name="m_head_006_b00" />
+                <setHair name="m_hair_014_black" />
+                <setBeard name="m_beard_09" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_01">
+            <selectors><hasName Name="soul_nebakov_servant_01" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_01" />
+                <setHead name="merc_fhead_01" />
+                <setHair name="merc_fhair_01" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_02">
+            <selectors><hasName Name="soul_nebakov_servant_02" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_02" />
+                <setHead name="merc_fhead_02" />
+                <setHair name="merc_fhair_02" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_03">
+            <selectors><hasName Name="soul_nebakov_servant_03" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="merc_fhead_03" />
+                <setHair name="merc_fhair_03" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_04">
+            <selectors><hasName Name="soul_nebakov_servant_04" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_01" />
+                <setHead name="merc_fhead_04" />
+                <setHair name="merc_fhair_04" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_05">
+            <selectors><hasName Name="soul_nebakov_servant_05" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_02" />
+                <setHead name="merc_fhead_05" />
+                <setHair name="merc_fhair_05" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_06">
+            <selectors><hasName Name="soul_nebakov_servant_06" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="merc_fhead_06" />
+                <setHair name="merc_fhair_06" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_07">
+            <selectors><hasName Name="soul_nebakov_servant_07" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_01" />
+                <setHead name="merc_fhead_07" />
+                <setHair name="merc_fhair_07" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_08">
+            <selectors><hasName Name="soul_nebakov_servant_08" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_02" />
+                <setHead name="merc_fhead_08" />
+                <setHair name="merc_fhair_08" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_09">
+            <selectors><hasName Name="soul_nebakov_servant_09" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_03" />
+                <setHead name="merc_fhead_09" />
+                <setHair name="merc_fhair_09" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+        <rule name="appearance_nebakov_servant_10">
+            <selectors><hasName Name="soul_nebakov_servant_10" /></selectors>
+            <operations>
+                <setBody name="m_body_pale_02" />
+                <setHead name="merc_fhead_10" />
+                <setHair name="merc_fhair_10" />
+                <setBeard name="m_beard_00" />
+            </operations>
+        </rule>
+    </rules>
+</storm>

@@ -1,6 +1,7 @@
 -- ============================================================
 -- Scripts/mods/NpcInteraction.lua
--- Modun spawn ettigi muhafizlara envanter aktarim etkilesimi ekler.
+-- Spawner'in ve CastleUtils'in yonettigi NPC'lere (muhafiz, hizmetkar, demirci...)
+-- rol ayarlarina gore envanter aktarim etkilesimi ekler.
 -- ============================================================
 
 nebakovrising = nebakovrising or {}
@@ -9,12 +10,42 @@ NpcInteraction = nebakovrising.NpcInteraction
 
 local Interaction = NpcInteraction
 
+local defaultOptions = {
+    label = "npc",
+    inventory = true,
+    equipTransferred = true,
+}
+
 local function log(message)
     if nebakovrising.Utils and nebakovrising.Utils.Log then
         nebakovrising.Utils.Log("[NpcInteraction] " .. tostring(message))
     elseif System and System.LogAlways then
         System.LogAlways("[nebakovrising] [NpcInteraction] " .. tostring(message))
     end
+end
+
+local function getLabel(entity)
+    local options = entity and entity._nebakovInteractionOptions
+    return options and options.label or defaultOptions.label
+end
+
+-- Secenekler rolun interaction tablosundan gelir:
+--   label, inventory (bool), equipTransferred (bool),
+--   extraActions = { { hint = "@...", action = "use", order = 2, func = function(npc, user) end } }
+local function resolveOptions(entity, options)
+    if type(options) ~= "table" then
+        local roles = nebakovrising.Roles
+        local role
+        if roles and entity and entity.GetName then
+            local nameOk, entityName = pcall(entity.GetName, entity)
+            if nameOk then role = roles.Resolve(entityName) end
+        end
+        options = role and role.interaction or {}
+    end
+    local resolved = {}
+    for key, value in pairs(defaultOptions) do resolved[key] = value end
+    for key, value in pairs(options) do resolved[key] = value end
+    return resolved
 end
 
 local function getEntityWuid(entity)
@@ -122,7 +153,7 @@ function Interaction.LogTransferOwnership(entity)
     local npcWuid = snapshot.npcWuid
     local playerWuid = snapshot.playerWuid
     logInventoryOwner(
-        "muhafiz",
+        getLabel(entity),
         snapshot.npcInventoryId,
         npcWuid,
         snapshot.npcInventoryOwner
@@ -149,7 +180,7 @@ function Interaction.LogTransferOwnership(entity)
     end
 
     log("Transfer sahiplik farki: oyuncunun aldigi esya adedi="
-        .. tostring(#playerReceived) .. ", muhafizin aldigi esya adedi="
+        .. tostring(#playerReceived) .. ", " .. getLabel(entity) .. " aldigi esya adedi="
         .. tostring(#npcReceived))
     if #playerReceived > 0 or #npcReceived > 0 then
         local castleUtils = nebakovrising.CastleUtils
@@ -166,7 +197,7 @@ function Interaction.LogTransferOwnership(entity)
         logItemOwner(itemId, "oyuncu", playerWuid)
     end
     for _, itemId in ipairs(npcReceived) do
-        logItemOwner(itemId, "muhafiz", npcWuid)
+        logItemOwner(itemId, getLabel(entity), npcWuid)
     end
     if #playerReceived == 0 and #npcReceived == 0 then
         log("Envanter ID farkinda aktarilan esya bulunamadi; stack birlesmesi veya callback zamani kontrol edilmeli.")
@@ -222,7 +253,7 @@ function Interaction.ApplyTransferredEquipment(entity)
     end
 
     if #transferredItems == 0 then
-        log("Muhafiza yeni esya aktarilmadi; kusanma gerekmiyor.")
+        log("NPC'ye yeni esya aktarilmadi; kusanma gerekmiyor.")
         return
     end
 
@@ -240,7 +271,7 @@ function Interaction.ApplyTransferredEquipment(entity)
     end
     if (actor.IsDead and actor:IsDead())
         or (actor.IsUnconscious and actor:IsUnconscious()) then
-        log("Aktarilan esyalar kusanilmadi: muhafiz olu veya bilincsiz.")
+        log("Aktarilan esyalar kusanilmadi: NPC olu veya bilincsiz.")
         return
     end
 
@@ -305,7 +336,7 @@ function Interaction.OpenInventory(npc, user)
         playerInventoryOwner = playerInventoryOwner,
     }
 
-    log("Muhafiz envanter aktarimi aciliyor: NPC=" .. tostring(npc.id)
+    log("Envanter aktarimi aciliyor (" .. getLabel(npc) .. "): NPC=" .. tostring(npc.id)
         .. ", inventory=" .. tostring(inventoryId)
         .. ", oyuncu=" .. tostring(user.id))
     log("Sahiplik tani API'leri: GetItemOwner="
@@ -314,7 +345,7 @@ function Interaction.OpenInventory(npc, user)
         .. tostring(ItemManager and type(ItemManager.SetItemOwner) == "function")
         .. ", GetInventoryOwner="
         .. tostring(EntityModule and type(EntityModule.GetInventoryOwner) == "function"))
-    log("Transfer oncesi envanter sahibi: muhafiz="
+    log("Transfer oncesi envanter sahibi: " .. getLabel(npc) .. "="
         .. tostring(npcInventoryOwner) .. " (" .. tostring(npcOwnerStatus) .. ")"
         .. ", oyuncu=" .. tostring(playerInventoryOwner) .. " (" .. tostring(playerOwnerStatus) .. ")")
     local ok, result = pcall(
@@ -332,15 +363,18 @@ function Interaction.OpenInventory(npc, user)
     end
 end
 
-function Interaction.Inject(entity)
+function Interaction.Inject(entity, options)
     if not entity then
         log("Etkilesim eklenemedi: NPC entity yok.")
         return false
     end
 
+    -- Secenekler her cagrida yenilenir; restore sonrasi rol degisikligi de yansir.
+    entity._nebakovInteractionOptions = resolveOptions(entity, options)
+
     if entity._nebakovInteractionInjected
         and entity.GetActions == entity._nebakovInjectedGetActions then
-        entity._nebakovManagedGuard = true
+        entity._nebakovManagedNpc = true
         return true
     end
 
@@ -352,7 +386,7 @@ function Interaction.Inject(entity)
     end
 
     entity._nebakovInteractionInjected = true
-    entity._nebakovManagedGuard = true
+    entity._nebakovManagedNpc = true
 
     local originalOnInventoryClosed = entity.OnInventoryClosed
     entity.OnInventoryClosed = function(selfEnt, ...)
@@ -363,7 +397,12 @@ function Interaction.Inject(entity)
             end
         end
         Interaction.LogTransferOwnership(selfEnt)
-        Interaction.ApplyTransferredEquipment(selfEnt)
+        local selfOptions = selfEnt._nebakovInteractionOptions or defaultOptions
+        if selfOptions.equipTransferred ~= false then
+            Interaction.ApplyTransferredEquipment(selfEnt)
+        else
+            selfEnt._nebakovInventorySnapshot = nil
+        end
     end
 
     entity.GetActions = function(selfEnt, userEnt, firstFast)
@@ -378,7 +417,7 @@ function Interaction.Inject(entity)
         if firstFast and #output > 0 then
             return output
         end
-        if not selfEnt._nebakovManagedGuard then
+        if not selfEnt._nebakovManagedNpc then
             return output
         end
 
@@ -388,19 +427,40 @@ function Interaction.Inject(entity)
             return output
         end
 
-        AddInteractorAction(
-            output,
-            firstFast,
-            Action()
-                :hint("@ui_open_stash")
-                :hintType(AHT_RELEASE)
-                :action("use")
-                :uiOrder(1)
-                :func(function(_, user)
-                    Interaction.OpenInventory(selfEnt, user)
-                end)
-                :interaction(inr_stashOpen or inr_loot)
-        )
+        local selfOptions = selfEnt._nebakovInteractionOptions or defaultOptions
+        if selfOptions.inventory ~= false then
+            AddInteractorAction(
+                output,
+                firstFast,
+                Action()
+                    :hint("@ui_open_stash")
+                    :hintType(AHT_RELEASE)
+                    :action("use")
+                    :uiOrder(1)
+                    :func(function(_, user)
+                        Interaction.OpenInventory(selfEnt, user)
+                    end)
+                    :interaction(inr_stashOpen or inr_loot)
+            )
+        end
+
+        for index, extra in ipairs(selfOptions.extraActions or {}) do
+            if type(extra.func) == "function" then
+                AddInteractorAction(
+                    output,
+                    firstFast,
+                    Action()
+                        :hint(extra.hint or "")
+                        :hintType(AHT_RELEASE)
+                        :action(extra.action or "use")
+                        :uiOrder(extra.order or (index + 1))
+                        :func(function(_, user)
+                            extra.func(selfEnt, user)
+                        end)
+                        :interaction(inr_stashOpen or inr_loot)
+                )
+            end
+        end
 
         return output
     end

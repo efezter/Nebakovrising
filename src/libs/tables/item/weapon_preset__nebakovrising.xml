@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<database xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="barbora" xsi:noNamespaceSchemaLocation="../database.xsd">
+	<weapon_presets version="1">
+		<!-- Melee muhafiz: yalnizca kisa kilic (kovaniNaKovarne_smithsDefense / shortswordCommon) -->
+		<weapon_preset weapon_preset_id="a1b2c3d4-0006-4000-8000-100000000006" weapon_preset_name="weapon_preset_nebakov_guard_melee">
+			<weapon_preset_item item_class_id="2f2095b6-ad4b-4002-9af3-96612f3e143c" />
+		</weapon_preset>
+	</weapon_presets>
+</database>

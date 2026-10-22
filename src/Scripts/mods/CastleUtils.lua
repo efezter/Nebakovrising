@@ -32,12 +32,20 @@ CastleUtils.noLockEnts = CastleUtils.noLockEnts or {
     ["stash[Chest/chest40_4649f0aa-24ec-49bd-8190-088569b39154]"] = true,
 }
 
-CastleUtils.beds = CastleUtils.beds or {
-    "smartObject[Bed/bed_low4_d9d626c4-dae2-416e-affd-96c3946151e3]",
-    "smartObject[Bed/bed_low1_2bbd8cec-55ba-4034-bd0f-1785ff415b2d]",
-    "smartObject[Bed/bed_low3_a01e9c19-d086-4728-ac1f-d26398043ba4]",
-    "smartObject[Bed/bed_bench1_9d9d9e04-6c8e-46e3-b935-3afd2d105a4f]",
-    "SO_LyingHarmed_Wounded2[special/lyingHarmed/lyingHarmed_healing1_200954b7-520b-4849-a8de-c928e4f3ba60]",
+-- Yataklar rol havuzlarina gore ayrilir (Roles tanimindaki bedPool anahtari).
+-- Su ana kadar kullanilan tum yataklar muhafiz yataklaridir; diger havuzlara
+-- selector eklendikce o roller yatak almaya baslar.
+CastleUtils.bedPools = CastleUtils.bedPools or {
+    guard = {
+        "smartObject[Bed/bed_low4_d9d626c4-dae2-416e-affd-96c3946151e3]",
+        "smartObject[Bed/bed_low1_2bbd8cec-55ba-4034-bd0f-1785ff415b2d]",
+        "smartObject[Bed/bed_low3_a01e9c19-d086-4728-ac1f-d26398043ba4]",
+        "smartObject[Bed/bed_bench1_9d9d9e04-6c8e-46e3-b935-3afd2d105a4f]",
+        "SO_LyingHarmed_Wounded2[special/lyingHarmed/lyingHarmed_healing1_200954b7-520b-4849-a8de-c928e4f3ba60]",
+    },
+    servant = {},
+    blacksmith = {},
+    quartermaster = {},
 }
 CastleUtils.bedEntities = CastleUtils.bedEntities or {}
 CastleUtils.bedAssignments = CastleUtils.bedAssignments or {}
@@ -175,6 +183,10 @@ function CastleUtils.SaveManagedNpc(entityName, bedSelector, preserveEquipment)
 
     local record = records[entityName] or {}
     if bedSelector then record.bedSelector = bedSelector end
+    if not record.role then
+        local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(entityName)
+        if role then record.role = role.id end
+    end
     if preserveEquipment ~= nil then
         record.preserveEquipment = preserveEquipment == true
     end
@@ -188,6 +200,12 @@ function CastleUtils.SaveManagedNpc(entityName, bedSelector, preserveEquipment)
         .. ", bed=" .. tostring(record.bedSelector)
         .. ", preserveEquipment=" .. tostring(record.preserveEquipment))
     return true
+end
+
+function CastleUtils.GetManagedNpcRole(entityName)
+    local records = getPersistentRecords(false)
+    local record = records and records[entityName]
+    return type(record) == "table" and record.role or nil
 end
 
 function CastleUtils.SnapshotManagedNpcPositions()
@@ -806,13 +824,61 @@ local function resolveMealBench(selector)
     return nil
 end
 
+-- Atamalar save'de kalici olsun diye anahtar WUID degil entity adidir.
+local function getMealNpcKey(npcWuid)
+    if npcWuid == nil then return nil end
+    if XGenAIModule and type(XGenAIModule.GetEntityByWUID) == "function" then
+        local ok, entity = pcall(XGenAIModule.GetEntityByWUID, npcWuid)
+        if ok and entity and entity.GetName then
+            local nameOk, name = pcall(entity.GetName, entity)
+            if nameOk and type(name) == "string" and name ~= "" then
+                return name
+            end
+        end
+    end
+    return tostring(npcWuid)
+end
+
+local function getMealRecord(npcKey, createStore)
+    local records = getPersistentRecords(createStore)
+    local record = records and records[npcKey]
+    return type(record) == "table" and record or nil
+end
+
+local function persistMealBench(npcKey, selector)
+    local record = getMealRecord(npcKey, false)
+    if record then record.mealBenchSelector = selector end
+end
+
+function CastleUtils.ReserveMealBenches()
+    local records = getPersistentRecords(false)
+    if not records then return 0 end
+
+    local reserved = 0
+    for entityName, record in pairs(records) do
+        if type(record) == "table" and record.managed and record.mealBenchSelector then
+            local selector = record.mealBenchSelector
+            local owner = CastleUtils.mealBenchOwners[selector]
+            if record.mealStage == nil then
+                record.mealBenchSelector = nil
+            elseif not owner or owner == entityName then
+                CastleUtils.mealBenchOwners[selector] = entityName
+                reserved = reserved + 1
+                log("Save'den yemek bench'i rezerve edildi: "
+                    .. tostring(entityName) .. " -> " .. tostring(selector))
+            end
+        end
+    end
+    return reserved
+end
+
 function CastleUtils.GetMealBench(npcWuid)
     if npcWuid == nil then
         log("Yemek bench'i atanamadi: NPC WUID yok.")
         return nil
     end
 
-    local npcKey = tostring(npcWuid)
+    local npcKey = getMealNpcKey(npcWuid)
     local assignment = CastleUtils.mealBenchAssignments[npcKey]
     if assignment then
         local bench = resolveMealBench(assignment.selector)
@@ -822,51 +888,52 @@ function CastleUtils.GetMealBench(npcWuid)
         return nil
     end
 
-    local attempts = CastleUtils.mealBenchAttempts[npcKey]
-    if type(attempts) ~= "table" then
-        attempts = {}
-        CastleUtils.mealBenchAttempts[npcKey] = attempts
+    -- Save'den gelen kayitli koltuk varsa baska koltuga dusme; hazir olana kadar bekle.
+    local record = getMealRecord(npcKey, false)
+    local savedSelector = record and record.mealBenchSelector
+    if savedSelector then
+        local owner = CastleUtils.mealBenchOwners[savedSelector]
+        if not owner or owner == npcKey then
+            local bench = resolveMealBench(savedSelector)
+            if bench then
+                CastleUtils.mealBenchOwners[savedSelector] = npcKey
+                CastleUtils.mealBenchAssignments[npcKey] = bench
+                log("Kayitli yemek bench'i geri yuklendi: NPC=" .. npcKey .. " -> " .. savedSelector)
+                return bench.entity, bench.wuid, bench.position, bench.selector
+            end
+            return nil
+        end
+        record.mealBenchSelector = nil
     end
 
-    local availableUntriedBench = false
-    for pass = 1, 2 do
-        for _, selector in ipairs(CastleUtils.mealBenchSelectors) do
-            local owner = CastleUtils.mealBenchOwners[selector]
-            if not owner then
-                local bench = resolveMealBench(selector)
-                if bench then
-                    availableUntriedBench = true
-                    if pass == 2 or not attempts[selector] then
-                        CastleUtils.mealBenchOwners[selector] = npcKey
-                        CastleUtils.mealBenchAssignments[npcKey] = bench
-                        attempts[selector] = true
-                        log("Yemek bench'i NPC'ye atandi: NPC=" .. npcKey
-                            .. " -> " .. selector)
-                        return bench.entity, bench.wuid, bench.position, bench.selector
-                    end
-                end
+    -- Yataklardaki gibi: dizideki ilk bos koltuk, sirayla.
+    for _, selector in ipairs(CastleUtils.mealBenchSelectors) do
+        if not CastleUtils.mealBenchOwners[selector] then
+            local bench = resolveMealBench(selector)
+            if bench then
+                CastleUtils.mealBenchOwners[selector] = npcKey
+                CastleUtils.mealBenchAssignments[npcKey] = bench
+                persistMealBench(npcKey, selector)
+                log("Yemek bench'i NPC'ye atandi: NPC=" .. npcKey .. " -> " .. selector)
+                return bench.entity, bench.wuid, bench.position, bench.selector
             end
-        end
-
-        if pass == 1 and availableUntriedBench then
-            for key in pairs(attempts) do
-                attempts[key] = nil
-            end
-            log("NPC icin bos bench kalmadi; yenileme turu baslatiliyor: "
-                .. npcKey)
-        else
-            break
         end
     end
 
-    log("NPC icin bos yemek bench'i yok: " .. npcKey)
+    local occupied = {}
+    for selector, owner in pairs(CastleUtils.mealBenchOwners) do
+        occupied[#occupied + 1] = string.sub(selector, 1, 60) .. " -> " .. tostring(owner)
+    end
+    log("NPC icin bos yemek bench'i yok: " .. npcKey .. " (dolu: "
+        .. (#occupied > 0 and table.concat(occupied, "; ") or "yok") .. ")")
     return nil
 end
 
 function CastleUtils.RetryMealBench(npcWuid)
     if npcWuid == nil then return false end
 
-    local npcKey = tostring(npcWuid)
+    local npcKey = getMealNpcKey(npcWuid)
+    persistMealBench(npcKey, nil)
     local assignment = CastleUtils.mealBenchAssignments[npcKey]
     if not assignment then
         log("Yemek bench'i yeniden atanamadi: mevcut atama yok: " .. npcKey)
@@ -892,7 +959,8 @@ end
 function CastleUtils.ReleaseMealBenchForNpc(npcWuid)
     if npcWuid == nil then return false end
 
-    local npcKey = tostring(npcWuid)
+    local npcKey = getMealNpcKey(npcWuid)
+    persistMealBench(npcKey, nil)
     local assignment = CastleUtils.mealBenchAssignments[npcKey]
     if not assignment then return false end
 
@@ -932,32 +1000,35 @@ function CastleUtils.RefreshBeds()
     local discoveredBeds = {}
     local seen = {}
 
-    for _, selector in pairs(CastleUtils.beds) do
-        if type(selector) == "string" then
-            local entityId = System.GetEntityIdByName(selector)
-            local entity = entityId and System.GetEntity(entityId)
-            if entity then
-                local key = selector
-                if not seen[key] then
-                    seen[key] = true
-                    local position
-                    local positionOk, positionResult = pcall(function()
-                        return entity:GetWorldPos()
-                    end)
-                    if positionOk then
-                        position = positionResult
-                    end
+    for poolName, selectors in pairs(CastleUtils.bedPools) do
+        for _, selector in pairs(selectors) do
+            if type(selector) == "string" then
+                local entityId = System.GetEntityIdByName(selector)
+                local entity = entityId and System.GetEntity(entityId)
+                if entity then
+                    local key = selector
+                    if not seen[key] then
+                        seen[key] = true
+                        local position
+                        local positionOk, positionResult = pcall(function()
+                            return entity:GetWorldPos()
+                        end)
+                        if positionOk then
+                            position = positionResult
+                        end
 
-                    discoveredBeds[#discoveredBeds + 1] = {
-                        id = key,
-                        entity = entity,
-                        selector = selector,
-                        wuid = getAiWuid(entity),
-                        position = position,
-                    }
+                        discoveredBeds[#discoveredBeds + 1] = {
+                            id = key,
+                            entity = entity,
+                            selector = selector,
+                            pool = poolName,
+                            wuid = getAiWuid(entity),
+                            position = position,
+                        }
+                    end
+                else
+                    log("Yatak entity'si bulunamadi: " .. selector)
                 end
-            else
-                log("Yatak entity'si bulunamadi: " .. selector)
             end
         end
     end
@@ -1029,7 +1100,7 @@ function CastleUtils.ReservePersistentBeds()
     return reserved
 end
 
-function CastleUtils.AssignBedToNpc(npc)
+function CastleUtils.AssignBedToNpc(npc, poolName)
     if not npc then
         log("Yatak atanamadi: NPC entity yok.")
         return nil
@@ -1040,6 +1111,10 @@ function CastleUtils.AssignBedToNpc(npc)
     local npcWuid = getAiWuid(npc)
     local npcWuidKey = npcWuid and tostring(npcWuid)
     local npcId = getEntityKey(npc, npcWuidKey)
+    if not poolName then
+        local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcId)
+        poolName = role and role.bedPool
+    end
     local assignment = CastleUtils.bedAssignments[npcId]
         or (npcWuidKey and CastleUtils.bedAssignments[npcWuidKey])
     if assignment then
@@ -1047,7 +1122,18 @@ function CastleUtils.AssignBedToNpc(npc)
         return bed.entity, bed.selector
     end
 
-    for _, bed in ipairs(CastleUtils.bedEntities) do
+    local poolBeds = {}
+    for _, candidate in ipairs(CastleUtils.bedEntities) do
+        if candidate.pool == poolName then
+            poolBeds[#poolBeds + 1] = candidate
+        end
+    end
+    if #poolBeds == 0 then
+        log("NPC icin yatak havuzu bos: " .. npcId .. " (havuz=" .. tostring(poolName) .. ")")
+        return nil
+    end
+
+    for _, bed in ipairs(poolBeds) do
         local ownerName = CastleUtils.bedOwners[bed.id]
         if ownerName then
             local ownerEntityId = System.GetEntityIdByName(ownerName)
@@ -1220,8 +1306,8 @@ function CastleUtils.RestoreNpcRuntimeState(userData)
         local record = records and records[entityName]
         if record
             and nebakovrising.Spawner
-            and nebakovrising.Spawner.ApplyGuardClothingPreset then
-            local applied = nebakovrising.Spawner.ApplyGuardClothingPreset(
+            and nebakovrising.Spawner.ApplyClothingPreset then
+            local applied = nebakovrising.Spawner.ApplyClothingPreset(
                 entityName,
                 attemptsLeft,
                 true
@@ -1233,12 +1319,11 @@ function CastleUtils.RestoreNpcRuntimeState(userData)
         end
 
         local spawner = nebakovrising.Spawner
-        if spawner and spawner.ApplyGuardFaction
-            and nebakovrising.Config.guardFaction then
-            spawner.ApplyGuardFaction(entityName, attemptsLeft)
+        if spawner and spawner.ApplyFaction then
+            spawner.ApplyFaction(entityName, attemptsLeft)
         end
-        if spawner and spawner.ApplyGuardWeaponDrawContext then
-            spawner.ApplyGuardWeaponDrawContext(entityName, attemptsLeft)
+        if spawner and spawner.ApplyWeaponDrawContext then
+            spawner.ApplyWeaponDrawContext(entityName, attemptsLeft)
         end
     end
 
@@ -1400,7 +1485,7 @@ function CastleUtils.RestoreManagedNpcs(attemptsLeft)
                 end
 
                 if nebakovrising.Spawner
-                    and nebakovrising.Spawner.ApplyGuardClothingPreset then
+                    and nebakovrising.Spawner.ApplyClothingPreset then
                     log("NPC kiyafet preset'i gecikmeli olarak geri uygulanacak: "
                         .. entityName)
                 else
@@ -1879,6 +1964,7 @@ function CastleUtils.OnGameplayStarted()
     CastleUtils._restoreInProgress = true
     CastleUtils.RefreshBeds()
     CastleUtils.ReservePersistentBeds()
+    CastleUtils.ReserveMealBenches()
     CastleUtils.LogPersistentNpcState()
     CastleUtils.AssignPlayerChest()
     Script.SetTimerForFunction(

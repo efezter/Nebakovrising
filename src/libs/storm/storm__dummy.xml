@@ -4,5 +4,8 @@
     <task name="abilities" class="abilities">
       <source path="dummy_abilities.xml" />
     </task>
+    <task name="appearance" class="appearance">
+      <source path="appearance\nebakovappearance.xml" />
+    </task>
   </tasks>
 </storm>

@@ -15,9 +15,6 @@ nebakovrising.Config = {
     npcSleepStartHour = 0,
     npcWakeHour = 8,
     guardFaction = "trosecko_settlements_tvrzNebakov_soldiers",
-    defaultGuardClothingPreset = "a1b2c3d4-0005-4000-8000-100000000005",
-    fallbackGuardClothingPreset = "a1b2c3d4-0005-4000-8000-100000000005",
-    defaultGuardWeaponClassId = "2f2095b6-ad4b-4002-9af3-96612f3e143c",
     -- Spawner icin varsayilan NPC ayarlari (kendi GUID'lerini doldur)
     npcDefaults = {
         guidSharedSoulId      = "0e118323-c699-4e4f-8bfa-15e1681e154f",
@@ -40,17 +37,32 @@ local Main = nebakovrising.Main
 function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/Utils.lua")
     Script.ReloadScript("Scripts/mods/EquipmentData.lua")
+    Script.ReloadScript("Scripts/mods/Roles.lua")
+    Script.ReloadScript("Scripts/mods/AppearancePools.lua")
+    Script.ReloadScript("Scripts/mods/roles/Guard.lua")
+    Script.ReloadScript("Scripts/mods/roles/Quartermaster.lua")
+    Script.ReloadScript("Scripts/mods/roles/Servant.lua")
+    Script.ReloadScript("Scripts/mods/roles/Blacksmith.lua")
     Script.ReloadScript("Scripts/mods/NpcInteraction.lua")
     Script.ReloadScript("Scripts/mods/Spawner.lua")
     Script.ReloadScript("Scripts/mods/CastleUtils.lua")
 end
 
 -- Konsol komutlari: oyun icinde ~ ile ac, ornegin:  nebakovrising_status
+-- Spawn komutlari rol tanimlarindan uretilir (Scripts/mods/roles/*.lua).
 function Main.RegisterCommands()
     if nebakovrising._cmdsRegistered then return end
     nebakovrising._cmdsRegistered = true
     System.AddCCommand("nebakovrising_status", "nebakovrising.Main.Status()", "nebakovrising durumunu yazdir")
-    System.AddCCommand("nebakovrising_spawn",  "nebakovrising.Spawner.SpawnTestNpc()", "Oyuncunun yanina test NPC spawn et")
+    for _, role in ipairs(nebakovrising.Roles.List()) do
+        if role.command then
+            System.AddCCommand(
+                role.command,
+                "nebakovrising.Spawner.SpawnRole('" .. role.id .. "')",
+                role.commandDescription or ("Oyuncunun yanina " .. role.id .. " spawn et")
+            )
+        end
+    end
     System.AddCCommand("nebakovrising_clear_npcs", "nebakovrising.CastleUtils.ClearManagedNpcs()", "Yonetilen NPC'leri ve kayitlarini sil")
 end
 

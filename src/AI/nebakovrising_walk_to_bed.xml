@@ -398,6 +398,7 @@
             <Variable name="mealSeatAcquired" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="mealSeatTimedOut" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="mealSeatWaitTicks" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="mealTargetTicks" type="_int" values="0" isPersistent="0" form="single" />
             <Variable name="mealBowlWuid" type="_wuid" values="" isPersistent="0" form="single" />
             <Variable name="hasMealBowl" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
@@ -405,6 +406,12 @@
             <Behavior canSkip="1">
                 <FuseBox StatusPropagation="Child" OneCleanup="true" saveVersion="2">
                     <Child canSkip="1">
+                    <Sequence>
+                    <ExecuteLua code="
+                        data.hasMealTargets = false
+                        data.mealTargetTicks = 0
+                    " />
+                    <While doFail="false" propagateChildFail="false" condition="$hasMealTargets == false &amp; $mealTargetTicks &lt; 900">
                     <Sequence>
                     <ExecuteLua code="
                         local castle = nebakovrising and nebakovrising.CastleUtils
@@ -428,9 +435,17 @@
                             System.LogAlways('[nebakovrising] NPC kahvalti masasi ve kazan hedefleri hazir; bench='
                                 .. tostring(benchWuid))
                         else
-                            System.LogAlways('[nebakovrising] NPC kahvalti davranisi baslatilamadi: masa veya kazan hedefi eksik')
+                            data.mealTargetTicks = data.mealTargetTicks + 1
+                            if data.mealTargetTicks == 1 then
+                                System.LogAlways('[nebakovrising] NPC icin bos yemek koltugu yok; bir koltuk bosalana kadar kaseyle beklenecek')
+                            end
                         end
                     " />
+                    <IfCondition failOnCondition="false" condition="$hasMealTargets == false">
+                        <Wait duration="&apos;2s&apos;" timeType="GameTime" doFail="false" variation="" />
+                    </IfCondition>
+                    </Sequence>
+                    </While>
                     <IfCondition failOnCondition="true" condition="$hasMealTargets">
                         <Sequence>
                             <ExecuteLua code="
