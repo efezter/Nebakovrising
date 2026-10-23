@@ -40,6 +40,7 @@
 			<Variable name="nebakovRequestTicks" type="_int" values="0" isPersistent="0" form="single" />
 			<Variable name="nebakovSchedulerLogged" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovMealReady" type="_bool" values="false" isPersistent="0" form="single" />
+			<Variable name="nebakovPatrolStart" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovResumeMealWalk" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovResumeMealAtTable" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovMealTicks" type="_int" values="0" isPersistent="0" form="single" />
@@ -691,6 +692,11 @@
 													data.nebakovMealTicks = 0
 												end
 												data.nebakovMealReady = walkState == 'meal_ready'
+												data.nebakovPatrolStart = false
+												if castle and castle.ShouldStartPatrol then
+													local patrolOk, patrolResult = pcall(castle.ShouldStartPatrol, entity)
+													data.nebakovPatrolStart = patrolOk and patrolResult == true
+												end
 												if walkState == 'requested' then
 													data.nebakovRequestTicks = data.nebakovRequestTicks + 1
 													if data.nebakovRequestTicks >= 20 then
@@ -760,6 +766,12 @@
 													" />
 													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_eat_at_table'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
 													<ExecuteLua code="System.LogAlways('[nebakovrising] Table-eating interrupt submitted')" />
+												</Sequence>
+											</IfCondition>
+											<IfCondition failOnCondition="false" condition="$nebakovPatrolStart">
+												<Sequence>
+													<ExecuteLua code="System.LogAlways('[nebakovrising] Patrol interrupt baslatiliyor; entity=' .. tostring(entity.this.id))" />
+													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_patrol'" Priority="50" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
 												</Sequence>
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovBedManaged &amp; ~$nebakovHasBed">
@@ -832,6 +844,7 @@
 				<Variable name="nebakovRequestTicks" comment="" />
 				<Variable name="nebakovSchedulerLogged" comment="" />
 				<Variable name="nebakovMealReady" comment="" />
+				<Variable name="nebakovPatrolStart" comment="" />
 				<Variable name="nebakovResumeMealWalk" comment="" />
 				<Variable name="nebakovResumeMealAtTable" comment="" />
 				<Variable name="nebakovMealTicks" comment="" />

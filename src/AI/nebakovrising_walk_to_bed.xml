@@ -401,6 +401,7 @@
             <Variable name="mealTargetTicks" type="_int" values="0" isPersistent="0" form="single" />
             <Variable name="mealBowlWuid" type="_wuid" values="" isPersistent="0" form="single" />
             <Variable name="hasMealBowl" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="stayAtTable" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
         <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
             <Behavior canSkip="1">
@@ -409,6 +410,7 @@
                     <Sequence>
                     <ExecuteLua code="
                         data.hasMealTargets = false
+                        data.stayAtTable = false
                         data.mealTargetTicks = 0
                     " />
                     <While doFail="false" propagateChildFail="false" condition="$hasMealTargets == false &amp; $mealTargetTicks &lt; 900">
@@ -538,7 +540,24 @@
                                                             end
                                                             System.LogAlways('[nebakovrising] NPC yemegi bitirdi; hunger='
                                                                 .. tostring(ok and hunger or 'unavailable: ' .. tostring(hunger)))
+                                                            local castle = nebakovrising and nebakovrising.CastleUtils
+                                                            data.stayAtTable = castle ~= nil and castle.IsEveningMeal(entity) == true
+                                                            if data.stayAtTable then castle.MarkEveningMealEaten(entity) end
                                                         " />
+                                                        <IfCondition failOnCondition="false" condition="$stayAtTable">
+                                                            <UrgencyDecorator Urgency="Slow">
+                                                                <UnstanceAction unstance="housekeeper_eat_waiting" locationObject="" slaveObject="" />
+                                                            </UrgencyDecorator>
+                                                        </IfCondition>
+                                                        <While doFail="false" propagateChildFail="false" condition="$stayAtTable">
+                                                            <Sequence>
+                                                                <Wait duration="&apos;2s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                <ExecuteLua code="
+                                                                    local castle = nebakovrising.CastleUtils
+                                                                    if castle.IsNpcSleepTime() then data.stayAtTable = false end
+                                                                " />
+                                                            </Sequence>
+                                                        </While>
                                                     </Sequence>
                                                 </StanceElement>
                                             </Sequence>

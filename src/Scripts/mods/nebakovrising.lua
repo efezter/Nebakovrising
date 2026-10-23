@@ -14,6 +14,11 @@ nebakovrising.Config = {
     bedBehaviorEnabled = true,
     npcSleepStartHour = 0,
     npcWakeHour = 8,
+    -- eveningMeal=true rollerde bu saatten uyku saatine kadar aksam yemegi tetiklenir.
+    eveningMealHour = 20,
+    -- Aksam yemegine giden iki NPC arasindaki rastgele gecikme (saniye).
+    eveningMealStaggerMin = 10,
+    eveningMealStaggerMax = 30,
     guardFaction = "trosecko_settlements_tvrzNebakov_soldiers",
     -- Spawner icin varsayilan NPC ayarlari (kendi GUID'lerini doldur)
     npcDefaults = {
@@ -54,6 +59,7 @@ function Main.RegisterCommands()
     if nebakovrising._cmdsRegistered then return end
     nebakovrising._cmdsRegistered = true
     System.AddCCommand("nebakovrising_status", "nebakovrising.Main.Status()", "nebakovrising durumunu yazdir")
+    System.AddCCommand("nebakovrising_patrol_status", "nebakovrising.CastleUtils.LogPatrolStatus()", "Guard patrol atama durumunu yazdir")
     for _, role in ipairs(nebakovrising.Roles.List()) do
         if role.command then
             System.AddCCommand(

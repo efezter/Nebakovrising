@@ -11,6 +11,8 @@
 --   weaponDrawContext (bool), bedPool (CastleUtils.bedPools anahtari)
 --   interaction = { label, inventory, equipTransferred, extraActions }
 --   appearancePool (AppearancePools.lua anahtari; varsayilan: rol id)
+--   patrol = { waitMin, waitMax, crossbow, fixed = {selector}, roaming = { {weight, points = {selector}} } }
+--            (yemekten sonra patrol sistemi; bkz. CastleUtils.AssignPatrolPoint)
 --   behaviors   = { { id, interrupt, poll } }  -- role ozel davranislar
 --   onSpawned(entity, name)
 -- ============================================================

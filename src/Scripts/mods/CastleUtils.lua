@@ -41,7 +41,14 @@ CastleUtils.bedPools = CastleUtils.bedPools or {
         "smartObject[Bed/bed_low1_2bbd8cec-55ba-4034-bd0f-1785ff415b2d]",
         "smartObject[Bed/bed_low3_a01e9c19-d086-4728-ac1f-d26398043ba4]",
         "smartObject[Bed/bed_bench1_9d9d9e04-6c8e-46e3-b935-3afd2d105a4f]",
-        "SO_LyingHarmed_Wounded2[special/lyingHarmed/lyingHarmed_healing1_200954b7-520b-4849-a8de-c928e4f3ba60]",
+        "smartObject[Bed/bed_low14_97e988b1-0af4-45d0-9422-6005851ec86b]",
+        "smartObject[Bed.bed_high12_0a667690-a0f5-46b3-9dce-696023ce085e]",
+        "smartObject[Bed.bed_high33_4370fd42-1455-43dd-9254-9915b0b83031]",
+        "smartObject[Bed/bed_bench4_da3f0e9c-91a1-4f30-bcbe-cb5ae9936bdb]",
+        "smartObject[Bed/bed_bench5_15c365eb-6042-4575-b7ed-2a4eabaf40e2]",
+        "smartObject[Bed/bed_bench6_79674cf0-8bd5-4eee-b5eb-8e54c24b4e5a]",
+         "smartObject[Bed.bed_low4_324c87a5-9307-46cb-8db7-f20b49ecf04d]",
+        "smartObject[Bed.bed_low3_bd5fdb84-eb4f-44d4-a3a1-59d99ce8eb43]",
     },
     servant = {},
     blacksmith = {},
@@ -70,6 +77,10 @@ CastleUtils.mealBenchSelectors = CastleUtils.mealBenchSelectors or {
     "smartObject[Table/table_twoSides7:Bench/bench_2places_low_table3[Table/table_twoSides7]_e5a98391-a268-056f-05cf-87e1e472a98c]",
     "smartObject2[Table/table_oneSide6:Bench/bench_2places_low_table4[Table/table_oneSide6]_c9c6d3f9-a350-0fa7-15a9-b96c3cd4e7d8]",
     "smartObject[Table/table_oneSide6:Bench/bench_2places_low_table4[Table/table_oneSide6]_c9c6d3f9-a350-0fa7-15a9-b96c3cd4e7d8]",
+    "smartObject[Table/table_twoSides8:Bench/bench_2places_low_table3[Table/table_twoSides8]_618bb817-04ef-03ca-3ada-eb5f2e3f316f]",
+    "smartObject2[Table/table_twoSides8:Bench/bench_2places_low_table3[Table/table_twoSides8]_618bb817-04ef-03ca-3ada-eb5f2e3f316f]",
+    "smartObject[Table/table_twoSides8:Bench/bench_2places_low_table2[Table/table_twoSides8]_5f4d75a7-aac1-0798-0f0f-687affe3e50a]",
+    "smartObject2[Table/table_twoSides8:Bench/bench_2places_low_table2[Table/table_twoSides8]_5f4d75a7-aac1-0798-0f0f-687affe3e50a]",
 }
 CastleUtils.mealBowlClassIds = CastleUtils.mealBowlClassIds or {
     "22910894-1c8e-4567-878a-8afc93ffd98b",
@@ -355,184 +366,6 @@ function CastleUtils.MarkPlayerEquipmentEquipped(entityName, itemId)
     CastleUtils._playerEquipmentFallback[entityName][tostring(itemId)] = true
 end
 
-local function itemHasEquipmentSlot(item)
-    if not item or type(item.GetSlot) ~= "function" then
-        if not CastleUtils._playerEquipmentSlotWarningLogged then
-            CastleUtils._playerEquipmentSlotWarningLogged = true
-            log("Ekipman slotu kontrol edilemiyor: Item.GetSlot API'si kullanilamiyor; son kusandirma kaydi yedek olarak kullanilacak.")
-        end
-        return nil
-    end
-
-    local ok, slot = pcall(item.GetSlot, item, true)
-    if not ok then
-        if not CastleUtils._playerEquipmentSlotWarningLogged then
-            CastleUtils._playerEquipmentSlotWarningLogged = true
-            log("Ekipman slotu kontrol edilemiyor: Item.GetSlot cagrisinda hata: "
-                .. tostring(slot))
-        end
-        return nil
-    end
-    if slot == nil or slot == false or slot == 0 then
-        return false
-    end
-
-    local slotHandle = tostring(slot)
-    local handleValue = string.match(slotHandle, "([%x]+)$")
-    if handleValue and string.match(handleValue, "^0+$") then
-        return false
-    end
-    return true
-end
-
-function CastleUtils.EnsurePlayerEquipmentEquipped()
-    local records = getPersistentRecords(false)
-    if not ItemManager or type(ItemManager.GetItem) ~= "function" then
-        if not CastleUtils._playerEquipmentApiWarning then
-            CastleUtils._playerEquipmentApiWarning = true
-            log("Oyuncu ekipmani korunamiyor: ItemManager.GetItem API'si kullanilamiyor.")
-        end
-        Script.SetTimerForFunction(
-            5000,
-            "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
-        )
-        return
-    end
-
-    for entityName, record in pairs(records or {}) do
-        local preservedClasses = type(record) == "table"
-            and record.playerEquipmentClasses
-        if type(record) == "table" and record.managed
-            and type(preservedClasses) == "table" then
-            local entityId = System.GetEntityIdByName(entityName)
-            local npc = entityId and System.GetEntity(entityId)
-            local actor = npc and npc.actor
-            local inventory = npc and npc.inventory
-            local npcWuid = npc and npc.this and npc.this.id
-            local bedState = npcWuid and CastleUtils.GetBedWalkState(npcWuid)
-
-            if actor and inventory
-                and bedState ~= "requested"
-                and bedState ~= "active"
-                and bedState ~= "completed"
-                and bedState ~= "waking"
-                and bedState ~= "meal"
-                and bedState ~= "meal_pending"
-                and bedState ~= "meal_ready"
-                and bedState ~= "eating"
-                and type(actor.EquipInventoryItem) == "function"
-                and type(inventory.GetInventoryTable) == "function" then
-                local isUnavailable = false
-                if type(actor.IsDead) == "function" then
-                    local ok, value = pcall(actor.IsDead, actor)
-                    isUnavailable = ok and value == true
-                end
-                if not isUnavailable and type(actor.IsUnconscious) == "function" then
-                    local ok, value = pcall(actor.IsUnconscious, actor)
-                    isUnavailable = ok and value == true
-                end
-
-                if not isUnavailable then
-                    local ok, inventoryItems = pcall(
-                        inventory.GetInventoryTable,
-                        inventory
-                    )
-                    if not ok or type(inventoryItems) ~= "table" then
-                        log("Oyuncu ekipmani kontrol edilemedi: NPC="
-                            .. tostring(entityName) .. ", sonuc="
-                            .. tostring(inventoryItems))
-                    else
-                        local remaining = {}
-                        for classKey, entry in pairs(preservedClasses) do
-                            if type(entry) == "table" and type(entry.class) == "string" then
-                                remaining[classKey] = math.max(
-                                    0,
-                                    tonumber(entry.count) or 0
-                                )
-                            end
-                        end
-
-                        local itemsToEquip = {}
-                        local equipmentData = nebakovrising.EquipmentData
-                        for _, itemId in pairs(inventoryItems) do
-                            local itemOk, item = pcall(ItemManager.GetItem, itemId)
-                            if itemOk and type(item) == "table"
-                                and type(item.class) == "string" then
-                                local classKey = string.lower(
-                                    string.gsub(item.class, "%-", "")
-                                )
-                                if (remaining[classKey] or 0) > 0 then
-                                    local hasSlot = itemHasEquipmentSlot(item)
-                                    local itemKey = tostring(itemId)
-                                    local wasEquipped = CastleUtils._playerEquipmentFallback
-                                        and CastleUtils._playerEquipmentFallback[entityName]
-                                        and CastleUtils._playerEquipmentFallback[entityName][itemKey]
-                                    if not hasSlot
-                                        and not (hasSlot == nil and wasEquipped) then
-                                        local indexedItem = equipmentData
-                                            and equipmentData.items
-                                            and equipmentData.items[classKey]
-                                        itemsToEquip[#itemsToEquip + 1] = {
-                                            id = itemId,
-                                            key = itemKey,
-                                            class = item.class,
-                                            slotOrder = indexedItem
-                                                and equipmentData.slotOrder
-                                                and equipmentData.slotOrder[indexedItem.slot]
-                                                or 999,
-                                        }
-                                    end
-                                    remaining[classKey] = remaining[classKey] - 1
-                                end
-                            end
-                        end
-
-                        table.sort(itemsToEquip, function(left, right)
-                            if left.slotOrder ~= right.slotOrder then
-                                return left.slotOrder < right.slotOrder
-                            end
-                            return tostring(left.class) < tostring(right.class)
-                        end)
-
-                        local equippedCount = 0
-                        for _, item in ipairs(itemsToEquip) do
-                            local equipOk, result = pcall(
-                                actor.EquipInventoryItem,
-                                actor,
-                                item.id
-                            )
-                            if equipOk and result ~= false then
-                                equippedCount = equippedCount + 1
-                                CastleUtils._playerEquipmentFallback =
-                                    CastleUtils._playerEquipmentFallback or {}
-                                CastleUtils._playerEquipmentFallback[entityName] =
-                                    CastleUtils._playerEquipmentFallback[entityName] or {}
-                                CastleUtils._playerEquipmentFallback[entityName][item.key] = true
-                            else
-                                log("Oyuncu ekipmani yeniden kusanilamadi: NPC="
-                                    .. tostring(entityName)
-                                    .. ", class=" .. tostring(item.class)
-                                    .. ", sonuc=" .. tostring(result))
-                            end
-                        end
-                        if equippedCount > 0 then
-                            log("Oyuncu ekipmani yeniden kusanildi: NPC="
-                                .. tostring(entityName)
-                                .. ", item=" .. tostring(equippedCount))
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- NPCs can drop runtime gear during LOD changes; re-offer only tracked gear classes.
-    Script.SetTimerForFunction(
-        5000,
-        "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
-    )
-end
-
 function CastleUtils.RemoveManagedNpcRecord(entityName)
     if type(entityName) ~= "string" then return false end
     local records = getPersistentRecords(false)
@@ -750,6 +583,7 @@ function CastleUtils.SetMealProgress(npc, stage)
     end
 
     record.mealStage = stage
+    if stage == nil then record.mealKind = nil end
     if stage == "meal_ready" then
         record.mealCollected = true
     elseif stage == nil or stage == "walking_to_cauldron"
@@ -974,6 +808,372 @@ function CastleUtils.ReleaseMealBenchForNpc(npcWuid)
     return true
 end
 
+-- ============================================================
+-- Guard patrol: yemekten sonra sabit/gezici guard noktalarina atama.
+-- ============================================================
+CastleUtils.patrolOwners = CastleUtils.patrolOwners or {}
+CastleUtils.patrolAssignments = CastleUtils.patrolAssignments or {}
+CastleUtils.patrolHeartbeats = CastleUtils.patrolHeartbeats or {}
+CastleUtils.patrolBlocked = CastleUtils.patrolBlocked or {}
+local patrolStaleSeconds = 6
+
+local function getPatrolRole(npcKey)
+    local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcKey)
+    return role and role.patrol and role or nil
+end
+
+local function getPatrolKind(selector)
+    if string.find(selector, "Bench/", 1, true) then return "sit" end
+    if string.find(selector, "leaningSpot", 1, true) then return "lean" end
+    return "guard"
+end
+
+local function resolvePatrolPoint(selector)
+    local entityId = System.GetEntityIdByName(selector)
+    local entity = entityId and System.GetEntity(entityId)
+    local wuid = entity and getAiWuid(entity)
+    local position = entity and readEntityPosition(entity)
+    if wuid and position then
+        return {
+            selector = selector,
+            wuid = wuid,
+            position = position,
+            kind = getPatrolKind(selector),
+        }
+    end
+    log("Patrol noktasi hazir degil, atlandi: " .. tostring(selector) .. ", WUID=" .. tostring(wuid))
+    return nil
+end
+
+local function purgeStalePatrolOwners()
+    local records = getPersistentRecords(false) or {}
+    for selector, owner in pairs(CastleUtils.patrolOwners) do
+        if records[owner] == nil then
+            CastleUtils.patrolOwners[selector] = nil
+            CastleUtils.patrolAssignments[owner] = nil
+        end
+    end
+end
+
+local function countReadyGuards(roleId)
+    if CastleUtils.IsNpcSleepTime() then return 0 end
+    local count = 0
+    for _, record in pairs(getPersistentRecords(false) or {}) do
+        if type(record) == "table" and record.managed and record.role == roleId
+            and record.mealStage == nil then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function persistPatrol(npcKey, selector)
+    local record = getMealRecord(npcKey, false)
+    if record then record.patrolSelector = selector end
+end
+
+local function takePatrolPoint(npcKey, selector)
+    local point = resolvePatrolPoint(selector)
+    if not point then return nil end
+    local previous = CastleUtils.patrolAssignments[npcKey]
+    if previous and previous.selector ~= selector
+        and CastleUtils.patrolOwners[previous.selector] == npcKey then
+        CastleUtils.patrolOwners[previous.selector] = nil
+    end
+    CastleUtils.patrolOwners[selector] = npcKey
+    CastleUtils.patrolAssignments[npcKey] = point
+    persistPatrol(npcKey, selector)
+    return point
+end
+
+local function isPatrolFree(selector, npcKey)
+    local blockedUntil = CastleUtils.patrolBlocked[selector]
+    if blockedUntil then
+        if System.GetCurrTime() < blockedUntil then return false end
+        CastleUtils.patrolBlocked[selector] = nil
+    end
+    local owner = CastleUtils.patrolOwners[selector]
+    return owner == nil or owner == npcKey
+end
+
+-- Candidate listesinden rastgele secip cozer; cozulemeyenleri eler.
+local function takeRandomPatrolPoint(npcKey, candidates)
+    while #candidates > 0 do
+        local index = math.random(#candidates)
+        local point = takePatrolPoint(npcKey, candidates[index])
+        if point then return point end
+        table.remove(candidates, index)
+    end
+    return nil
+end
+
+local function pickWeightedRoamingPoint(npcKey, role, currentSelector)
+    local groups = {}
+    local totalWeight = 0
+    for _, group in ipairs(role.patrol.roaming or {}) do
+        local free = {}
+        for _, selector in ipairs(group.points) do
+            if selector ~= currentSelector and isPatrolFree(selector, npcKey) then
+                free[#free + 1] = selector
+            end
+        end
+        if #free > 0 then
+            groups[#groups + 1] = { weight = group.weight or 1, points = free }
+            totalWeight = totalWeight + (group.weight or 1)
+        end
+    end
+
+    while #groups > 0 do
+        local roll = math.random() * totalWeight
+        local chosenIndex = #groups
+        for index, group in ipairs(groups) do
+            roll = roll - group.weight
+            if roll <= 0 then chosenIndex = index break end
+        end
+        local chosen = groups[chosenIndex]
+        local point = takeRandomPatrolPoint(npcKey, chosen.points)
+        if point then return point end
+        totalWeight = totalWeight - chosen.weight
+        table.remove(groups, chosenIndex)
+    end
+    return nil
+end
+
+function CastleUtils.ReservePatrolPoints()
+    local reserved = 0
+    for entityName, record in pairs(getPersistentRecords(false) or {}) do
+        if type(record) == "table" and record.patrolSelector then
+            if CastleUtils.patrolOwners[record.patrolSelector] == nil then
+                CastleUtils.patrolOwners[record.patrolSelector] = entityName
+                reserved = reserved + 1
+            else
+                record.patrolSelector = nil
+            end
+        end
+    end
+    return reserved
+end
+
+function CastleUtils.ReleasePatrolForNpc(npcWuid, blockPoint)
+    if npcWuid == nil then return false end
+    local npcKey = getMealNpcKey(npcWuid)
+    local assignment = CastleUtils.patrolAssignments[npcKey]
+    local record = getMealRecord(npcKey, false)
+    local selector = assignment and assignment.selector or (record and record.patrolSelector)
+    if selector and blockPoint then
+        CastleUtils.patrolBlocked[selector] = System.GetCurrTime() + 120
+    end
+    if selector and CastleUtils.patrolOwners[selector] == npcKey then
+        CastleUtils.patrolOwners[selector] = nil
+    end
+    CastleUtils.patrolAssignments[npcKey] = nil
+    CastleUtils.patrolHeartbeats[tostring(npcWuid)] = nil
+    persistPatrol(npcKey, nil)
+    return selector ~= nil
+end
+
+-- Behavior tree cagirir: sonraki patrol noktasini (veya mevcut sabit noktayi) dondurur.
+function CastleUtils.AssignPatrolPoint(npcWuid)
+    if npcWuid == nil or CastleUtils.IsNpcSleepTime() then return nil end
+    local npcKey = getMealNpcKey(npcWuid)
+    local role = getPatrolRole(npcKey)
+    if not role then return nil end
+
+    purgeStalePatrolOwners()
+    local patrol = role.patrol
+    local fixed = patrol.fixed or {}
+    local fixedSet = {}
+    for _, selector in ipairs(fixed) do fixedSet[selector] = true end
+
+    local current = CastleUtils.patrolAssignments[npcKey]
+    if not current then
+        local record = getMealRecord(npcKey, false)
+        local saved = record and record.patrolSelector
+        if saved and isPatrolFree(saved, npcKey) then
+            current = takePatrolPoint(npcKey, saved)
+            if current then
+                current.mode = fixedSet[saved] and "fixed" or "roaming"
+                current.waitSeconds = math.random(patrol.waitMin or 10, patrol.waitMax or 180)
+                return current
+            end
+            return nil
+        end
+    end
+
+    local ready = math.max(1, countReadyGuards(role.id))
+    local currentSelector = current and current.selector
+
+    -- Yeterli guard varsa sabit noktadaki guard kalici kalir.
+    if currentSelector and fixedSet[currentSelector] and ready >= #fixed then
+        current.mode = "fixed"
+        current.waitSeconds = math.random(patrol.waitMin or 10, patrol.waitMax or 180)
+        return current
+    end
+
+    local point
+    local freeFixed = {}
+    for _, selector in ipairs(fixed) do
+        if selector ~= currentSelector and isPatrolFree(selector, npcKey) then
+            freeFixed[#freeFixed + 1] = selector
+        end
+    end
+
+    if ready < #fixed then
+        -- Guard yetersiz: gezici noktalar yok sayilir, sabit noktalar arasinda dolasilir.
+        point = takeRandomPatrolPoint(npcKey, freeFixed)
+    else
+        for _, selector in ipairs(freeFixed) do
+            point = takePatrolPoint(npcKey, selector)
+            if point then break end
+        end
+        point = point or pickWeightedRoamingPoint(npcKey, role, currentSelector)
+    end
+
+    point = point or current
+    if not point then return nil end
+    point.mode = fixedSet[point.selector] and "fixed" or "roaming"
+    point.waitSeconds = math.random(patrol.waitMin or 10, patrol.waitMax or 180)
+    log("Patrol atamasi: NPC=" .. npcKey .. " -> " .. point.selector
+        .. " (" .. point.mode .. "/" .. point.kind .. ", " .. point.waitSeconds .. "s, hazirGuard="
+        .. ready .. ")")
+    return point
+end
+
+function CastleUtils.PatrolHeartbeat(npcWuid)
+    if npcWuid ~= nil then
+        CastleUtils.patrolHeartbeats[tostring(npcWuid)] = System.GetCurrTime()
+    end
+end
+
+function CastleUtils.NeedsCrossbowReady(npcWuid)
+    local role = getPatrolRole(getMealNpcKey(npcWuid))
+    return role ~= nil and role.patrol.crossbow == true
+end
+
+CastleUtils.eveningMealSchedule = CastleUtils.eveningMealSchedule or {}
+
+-- Aksam yemegi vakti gelen NPC'yi mevcut kahvalti zincirine (meal_pending) sokar.
+function CastleUtils.ShouldStartEveningMeal(entity)
+    local cfg = nebakovrising.Config
+    local npcKey = entity:GetName()
+    local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcKey)
+    if not role or not role.eveningMeal or type(cfg.eveningMealHour) ~= "number" then
+        return false
+    end
+    local record = getMealRecord(npcKey, false)
+    if not record or not record.managed then return false end
+
+    local sleepTime, hour = CastleUtils.IsNpcSleepTime()
+    if type(hour) ~= "number" then return false end
+    if hour < cfg.eveningMealHour then
+        record.eveningMealDone = nil
+        CastleUtils.eveningMealSchedule[npcKey] = nil
+        return false
+    end
+    if sleepTime or record.eveningMealDone or record.mealStage ~= nil then
+        return false
+    end
+
+    local now = System.GetCurrTime()
+    local due = CastleUtils.eveningMealSchedule[npcKey]
+    if not due then
+        local minGap = cfg.eveningMealStaggerMin or 10
+        local maxGap = cfg.eveningMealStaggerMax or 30
+        due = math.max(now, CastleUtils.eveningMealNextSlot or 0) + math.random(minGap, maxGap)
+        CastleUtils.eveningMealNextSlot = due
+        CastleUtils.eveningMealSchedule[npcKey] = due
+    end
+    if now < due then return false end
+
+    CastleUtils.eveningMealSchedule[npcKey] = nil
+    record.mealKind = "evening"
+    CastleUtils.SetMealProgress(entity, "meal_pending")
+    log("Aksam yemegi baslatildi: NPC=" .. tostring(npcKey))
+    return true
+end
+
+function CastleUtils.IsEveningMeal(entity)
+    local record = entity and entity.GetName and getMealRecord(entity:GetName(), false)
+    return record ~= nil and record.mealKind == "evening"
+end
+
+function CastleUtils.MarkEveningMealEaten(entity)
+    local record = entity and entity.GetName and getMealRecord(entity:GetName(), false)
+    if record and record.mealKind == "evening" then record.eveningMealDone = true end
+end
+
+function CastleUtils.PatrolShouldStop(entity)
+    if CastleUtils.IsNpcSleepTime() then return true end
+    return entity ~= nil and CastleUtils.GetMealProgress(entity) ~= nil
+end
+
+-- switch.xml dongusu cagirir; true ise patrol interrupt'i baslatilmali.
+function CastleUtils.ShouldStartPatrol(entity)
+    if not entity or not entity.GetName then return false end
+    local wuid = entity.this and entity.this.id
+    local npcKey = entity:GetName()
+    if wuid == nil or not getPatrolRole(npcKey) then return false end
+
+    local state = CastleUtils.GetBedWalkState(wuid)
+    local sleepTime = CastleUtils.IsNpcSleepTime()
+
+    -- Patrol'dayken meal_pending yazilir; patrol agaci PatrolShouldStop ile ayaga kalkip
+    -- kendiliginden cikar, sonra idle olunca yemek zinciri baslar.
+    if state == nil or state == "idle" or state == "patrolling" then
+        CastleUtils.ShouldStartEveningMeal(entity)
+    end
+
+    if state == "patrolling" then
+        if sleepTime then
+            CastleUtils.ReleasePatrolForNpc(wuid)
+            CastleUtils.SetBedWalkState(wuid, "idle")
+            return false
+        end
+        local beat = CastleUtils.patrolHeartbeats[tostring(wuid)]
+        if not beat or System.GetCurrTime() - beat > patrolStaleSeconds then
+            CastleUtils.SetBedWalkState(wuid, "idle")
+        end
+        return false
+    end
+
+    if sleepTime or (state ~= nil and state ~= "idle") then return false end
+    if CastleUtils.GetMealProgress(entity) ~= nil then return false end
+    local record = getMealRecord(npcKey, false)
+    if not record or not record.managed then return false end
+
+    CastleUtils.SetBedWalkState(wuid, "patrolling")
+    CastleUtils.PatrolHeartbeat(wuid)
+    return true
+end
+
+function CastleUtils.LogPatrolStatus()
+    log("=== Patrol durumu ===")
+    local now = System.GetCurrTime()
+    for name, point in pairs(CastleUtils.patrolAssignments) do
+        log("NPC=" .. tostring(name) .. " -> " .. tostring(point.selector)
+            .. " mode=" .. tostring(point.mode) .. " kind=" .. tostring(point.kind))
+    end
+    for _, role in ipairs(nebakovrising.Roles.List()) do
+        if role.patrol then
+            local all = {}
+            for _, selector in ipairs(role.patrol.fixed or {}) do all[#all + 1] = { selector, "fixed" } end
+            for _, group in ipairs(role.patrol.roaming or {}) do
+                for _, selector in ipairs(group.points) do all[#all + 1] = { selector, "roaming" } end
+            end
+            local used = 0
+            for _, entry in ipairs(all) do
+                if CastleUtils.patrolOwners[entry[1]] then used = used + 1 end
+            end
+            log(role.id .. ": hazirGuard=" .. countReadyGuards(role.id)
+                .. ", sabit=" .. #(role.patrol.fixed or {})
+                .. ", nokta=" .. #all .. ", dolu=" .. used)
+        end
+    end
+    for wuid, beat in pairs(CastleUtils.patrolHeartbeats) do
+        log("heartbeat WUID=" .. wuid .. " " .. string.format("%.1f", now - beat) .. "s once")
+    end
+end
+
 local function isNpcDead(npc)
     if not npc then return true end
 
@@ -1186,6 +1386,9 @@ function CastleUtils.ResetBedAssignments()
     CastleUtils.mealBenchOwners = {}
     CastleUtils.mealBenchAssignments = {}
     CastleUtils.mealBenchAttempts = {}
+    CastleUtils.patrolOwners = {}
+    CastleUtils.patrolAssignments = {}
+    CastleUtils.patrolHeartbeats = {}
     CastleUtils.trackedBedOwners = {}
     CastleUtils.trackedBedCandidates = {}
     CastleUtils.trackedBedCandidatesByWuid = {}
@@ -1341,6 +1544,15 @@ function CastleUtils.RestoreNpcRuntimeState(userData)
     end
 end
 
+function CastleUtils.IsBedSelectorInPools(selector)
+    for _, selectors in pairs(CastleUtils.bedPools) do
+        for _, candidate in pairs(selectors) do
+            if candidate == selector then return true end
+        end
+    end
+    return false
+end
+
 function CastleUtils.RestoreManagedNpcs(attemptsLeft)
     attemptsLeft = attemptsLeft or 0
     local records = getPersistentRecords(false)
@@ -1430,10 +1642,11 @@ function CastleUtils.RestoreManagedNpcs(attemptsLeft)
                     local entityWuid = npc.this and npc.this.id
                     local currentOwner = CastleUtils.bedOwners[bed.id]
                     if currentOwner and currentOwner ~= entityName then
-                        pendingEntity = true
                         log("Save'den yatak atamasi cakismasi; mevcut sahip korunuyor: yatak="
                             .. tostring(record.bedSelector) .. ", owner="
                             .. tostring(currentOwner) .. ", bekleyen=" .. entityName)
+                        record.bedSelector = nil
+                        CastleUtils.TrackUnassignedNpc(npc, entityName)
                     else
                         CastleUtils.bedOwners[bed.id] = entityName
                         CastleUtils.bedAssignments[entityName] = bed
@@ -1461,11 +1674,18 @@ function CastleUtils.RestoreManagedNpcs(attemptsLeft)
                                 .. entityName .. " -> " .. tostring(record.bedSelector))
                         end
                     end
-                elseif record.bedSelector then
+                elseif record.bedSelector
+                    and CastleUtils.IsBedSelectorInPools(record.bedSelector)
+                    and attemptsLeft > 0 then
                     pendingEntity = true
                     log("Save'deki NPC yatagi henuz bulunamadi: "
                         .. tostring(record.bedSelector))
                 elseif CastleUtils.TrackUnassignedNpc then
+                    if record.bedSelector then
+                        log("Save'deki NPC yatagi artik yok; yeni bos yatak aranacak: "
+                            .. entityName .. " -> " .. tostring(record.bedSelector))
+                        record.bedSelector = nil
+                    end
                     CastleUtils.TrackUnassignedNpc(npc, entityName)
                 end
 
@@ -1965,6 +2185,7 @@ function CastleUtils.OnGameplayStarted()
     CastleUtils.RefreshBeds()
     CastleUtils.ReservePersistentBeds()
     CastleUtils.ReserveMealBenches()
+    CastleUtils.ReservePatrolPoints()
     CastleUtils.LogPersistentNpcState()
     CastleUtils.AssignPlayerChest()
     Script.SetTimerForFunction(
@@ -1975,10 +2196,6 @@ function CastleUtils.OnGameplayStarted()
     Script.SetTimerForFunction(
         10000,
         "nebakovrising.CastleUtils.SnapshotManagedNpcPositions"
-    )
-    Script.SetTimerForFunction(
-        5000,
-        "nebakovrising.CastleUtils.EnsurePlayerEquipmentEquipped"
     )
 end
 

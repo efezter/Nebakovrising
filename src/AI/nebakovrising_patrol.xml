@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<BehaviorTrees>
+    <BehaviorTree name="nebakovrising_patrol" is_function="0">
+        <Variables>
+            <Variable name="patrolActive" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="hasTarget" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="needCrossbow" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="hasCrossbow" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="pointPos" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="pointWuid" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="leanTarget" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="pointKind" type="_string" values="" isPersistent="0" form="single" />
+            <Variable name="waitSeconds" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="elapsed" type="_int" values="0" isPersistent="0" form="single" />
+            <Variable name="setWeapons" type="_wuid" values="" isPersistent="0" form="array" />
+            <Variable name="itemType" type="_string" values="" isPersistent="0" form="single" />
+        </Variables>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <FuseBox StatusPropagation="Child" OneCleanup="true" saveVersion="2">
+                    <Child canSkip="1">
+                        <Sequence>
+                            <ExecuteLua code="
+                                local castle = nebakovrising and nebakovrising.CastleUtils
+                                data.patrolActive = castle ~= nil
+                                data.needCrossbow = castle ~= nil and castle.NeedsCrossbowReady(entity.this.id) == true
+                                System.LogAlways('[nebakovrising] Patrol davranisi basladi; entity=' .. tostring(entity.this.id))
+                            " />
+                            <While doFail="false" propagateChildFail="false" condition="$patrolActive">
+                                <Sequence>
+                                    <ExecuteLua code="
+                                        local castle = nebakovrising.CastleUtils
+                                        castle.PatrolHeartbeat(entity.this.id)
+                                        data.hasTarget = false
+                                        if castle.PatrolShouldStop(entity) then
+                                            data.patrolActive = false
+                                        else
+                                            local point = castle.AssignPatrolPoint(entity.this.id)
+                                            if point then
+                                                data.hasTarget = true
+                                                data.pointPos.x = point.position.x
+                                                data.pointPos.y = point.position.y
+                                                data.pointPos.z = point.position.z
+                                                data.pointWuid = point.wuid
+                                                data.pointKind = point.kind
+                                                data.waitSeconds = point.waitSeconds
+                                                data.elapsed = 0
+                                            end
+                                        end
+                                    " />
+                                    <IfCondition failOnCondition="false" condition="$hasTarget">
+                                        <Sequence>
+                                            <StanceElement smartObject="" stance="standing" allowAny="true" enabled="true">
+                                            <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                                <Move stopWithinDistance="0.700000" stopDistanceVariation="0.200000" rayCasteFlee="false" successDistance="0.000000" changeNPCState="false" fastForwardIncludesMove="false" destinationSpecification="$pointPos" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                            </MoveParamsDecorator>
+                                            </StanceElement>
+                                            <ExecuteLua code="data.hasCrossbow = false" />
+                                            <IfCondition failOnCondition="false" condition="$needCrossbow">
+                                                <Sequence>
+                                                    <GetWeaponsFromWeaponSet WeaponSet="Secondary" LeftHand="$setWeapons[0]" RightHand="$setWeapons[1]" UseTorchWhenAppropriate="true" />
+                                                    <IfCondition failOnCondition="false" condition="$setWeapons[0] ~= $__null">
+                                                        <Sequence>
+                                                            <GetItemType WUID="$setWeapons[0]" OutCategory="" OutType="$itemType" OutSubType="" />
+                                                            <IfCondition failOnCondition="false" condition="$itemType == &apos;crossbow_light&apos; | $itemType == &apos;crossbow_medium&apos; | $itemType == &apos;crossbow_heavy&apos;">
+                                                                <Sequence>
+                                                                <ExecuteLua code="data.hasCrossbow = true" />
+                                                                <IsWeaponLoaded failOnCondition="false" saveVersion="2">
+                                                                    <Else canSkip="1">
+                                                                        <HandContentElement hand="Left" item="$setWeapons[0]" allowAny="false" allowHomeSlotAutoReturn="false" decisionLabel="guard_crossbow" useDecision="true" enabled="true" saveVersion="2">
+                                                                            <Search canSkip="1">
+                                                                                <Success />
+                                                                            </Search>
+                                                                            <Exec canSkip="1">
+                                                                                <LoadWeaponAction />
+                                                                            </Exec>
+                                                                        </HandContentElement>
+                                                                    </Else>
+                                                                </IsWeaponLoaded>
+                                                                </Sequence>
+                                                            </IfCondition>
+                                                        </Sequence>
+                                                    </IfCondition>
+                                                </Sequence>
+                                            </IfCondition>
+                                            <ExecuteLua code="System.LogAlways('[nebakovrising] Patrol noktasina varildi; kind=' .. tostring(data.pointKind) .. ', bekleme=' .. tostring(data.waitSeconds) .. 's')" />
+                                            <IfElseCondition failOnCondition="false" condition="$hasCrossbow" saveVersion="2">
+                                            <Then canSkip="1">
+                                            <HandContentElement hand="Left" item="$setWeapons[0]" allowAny="false" allowHomeSlotAutoReturn="false" decisionLabel="guard_crossbow" useDecision="true" enabled="true" saveVersion="2">
+                                            <Search canSkip="1">
+                                                <Success />
+                                            </Search>
+                                            <Exec canSkip="1">
+                                            <Sequence>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;sit&apos;">
+                                                <StanceElement smartObject="$pointWuid" stance="sitting" allowAny="false" enabled="true">
+                                                    <Sequence>
+                                                        <WaitAction />
+                                                        <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                            <Sequence>
+                                                                <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                <ExecuteLua code="
+                                                                    data.elapsed = data.elapsed + 1
+                                                                    nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                    if nebakovrising.CastleUtils.PatrolShouldStop(entity) then data.patrolActive = false end
+                                                                " />
+                                                            </Sequence>
+                                                        </While>
+                                                    </Sequence>
+                                                </StanceElement>
+                                            </IfCondition>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;lean&apos;">
+                                                <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                                    <AddLinkElement from="$this.id" to="$pointWuid" tag="&apos;leaningObject&apos;" data="" enabled="true">
+                                                        <Sequence>
+                                                            <UnstanceAction unstance="LeaningBack" locationObject="$pointWuid" slaveObject="" />
+                                                            <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                                <Sequence>
+                                                                    <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                    <ExecuteLua code="
+                                                                        data.elapsed = data.elapsed + 1
+                                                                        nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                        if nebakovrising.CastleUtils.PatrolShouldStop(entity) then data.patrolActive = false end
+                                                                    " />
+                                                                </Sequence>
+                                                            </While>
+                                                        </Sequence>
+                                                    </AddLinkElement>
+                                                </MoveParamsDecorator>
+                                            </IfCondition>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;guard&apos;">
+                                                <Sequence>
+                                                    <ExactMove directionType="AlignWithEntity" directionSpecification="$pointWuid" animationTriggerDist="0.150000" precise="true" changeNPCState="true" fastForwardIncludesMove="true" destinationSpecification="$pointWuid" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                                    <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                        <Sequence>
+                                                            <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                            <ExecuteLua code="
+                                                                data.elapsed = data.elapsed + 1
+                                                                nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                if nebakovrising.CastleUtils.                                                                PatrolShouldStop(entity) then data.patrolActive = false end
+                                                            " />
+                                                        </Sequence>
+                                                    </While>
+                                                </Sequence>
+                                            </IfCondition>
+                                            </Sequence>
+                                            </Exec>
+                                            </HandContentElement>
+                                            </Then>
+                                            <Else canSkip="1">
+                                            <Sequence>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;sit&apos;">
+                                                <StanceElement smartObject="$pointWuid" stance="sitting" allowAny="false" enabled="true">
+                                                    <Sequence>
+                                                        <WaitAction />
+                                                        <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                            <Sequence>
+                                                                <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                <ExecuteLua code="
+                                                                    data.elapsed = data.elapsed + 1
+                                                                    nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                    if nebakovrising.CastleUtils.PatrolShouldStop(entity) then data.patrolActive = false end
+                                                                " />
+                                                            </Sequence>
+                                                        </While>
+                                                    </Sequence>
+                                                </StanceElement>
+                                            </IfCondition>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;lean&apos;">
+                                                <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
+                                                    <AddLinkElement from="$this.id" to="$pointWuid" tag="&apos;leaningObject&apos;" data="" enabled="true">
+                                                        <Sequence>
+                                                            <UnstanceAction unstance="LeaningBack" locationObject="$pointWuid" slaveObject="" />
+                                                            <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                                <Sequence>
+                                                                    <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                                    <ExecuteLua code="
+                                                                        data.elapsed = data.elapsed + 1
+                                                                        nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                        if nebakovrising.CastleUtils.PatrolShouldStop(entity) then data.patrolActive = false end
+                                                                    " />
+                                                                </Sequence>
+                                                            </While>
+                                                        </Sequence>
+                                                    </AddLinkElement>
+                                                </MoveParamsDecorator>
+                                            </IfCondition>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;guard&apos;">
+                                                <Sequence>
+                                                    <ExactMove directionType="AlignWithEntity" directionSpecification="$pointWuid" animationTriggerDist="0.150000" precise="true" changeNPCState="true" fastForwardIncludesMove="true" destinationSpecification="$pointWuid" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
+                                                    <While doFail="false" propagateChildFail="false" condition="$elapsed &lt; $waitSeconds &amp; $patrolActive">
+                                                        <Sequence>
+                                                            <Wait duration="&apos;1s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                                            <ExecuteLua code="
+                                                                data.elapsed = data.elapsed + 1
+                                                                nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)
+                                                                if nebakovrising.CastleUtils.                                                                PatrolShouldStop(entity) then data.patrolActive = false end
+                                                            " />
+                                                        </Sequence>
+                                                    </While>
+                                                </Sequence>
+                                            </IfCondition>
+                                            </Sequence>
+                                            </Else>
+                                            </IfElseCondition>
+                                            <IfCondition failOnCondition="false" condition="$pointKind == &apos;sit&apos; | $pointKind == &apos;lean&apos;">
+                                                <Sequence>
+                                                    <WaitAction />
+                                                    <ExecuteLua code="
+                                                        if AI and type(AI.SetStance) == 'function'
+                                                            and E_ACTORSTANCE_NORMAL ~= nil then
+                                                            local ok, result = pcall(AI.SetStance, entity.id, E_ACTORSTANCE_NORMAL)
+                                                            System.LogAlways('[nebakovrising] Patrol stance released; ok='
+                                                                .. tostring(ok) .. ', result=' .. tostring(result))
+                                                        end
+                                                    " />
+                                                    <StanceElement smartObject="" stance="standing" allowAny="true" enabled="true">
+                                                        <WaitAction />
+                                                    </StanceElement>
+                                                </Sequence>
+                                            </IfCondition>
+                                        </Sequence>
+                                    </IfCondition>
+                                    <IfCondition failOnCondition="false" condition="$hasTarget == false &amp; $patrolActive">
+                                        <Sequence>
+                                            <Wait duration="&apos;5s&apos;" timeType="GameTime" doFail="false" variation="" />
+                                            <ExecuteLua code="nebakovrising.CastleUtils.PatrolHeartbeat(entity.this.id)" />
+                                        </Sequence>
+                                    </IfCondition>
+                                </Sequence>
+                            </While>
+                            <ExecuteLua code="
+                                local castle = nebakovrising.CastleUtils
+                                castle.ReleasePatrolForNpc(entity.this.id)
+                                castle.SetBedWalkState(entity.this.id, 'idle')
+                                System.LogAlways('[nebakovrising] Patrol davranisi bitti (uyku vakti); entity=' .. tostring(entity.this.id))
+                            " />
+                        </Sequence>
+                    </Child>
+                    <OnFail canSkip="1">
+                        <ExecuteLua code="
+                            local castle = nebakovrising.CastleUtils
+                            castle.ReleasePatrolForNpc(entity.this.id, true)
+                            castle.SetBedWalkState(entity.this.id, 'idle')
+                            System.LogAlways('[nebakovrising] Patrol davranisi basarisiz; nokta gecici olarak engellendi; entity=' .. tostring(entity.this.id))
+                        " />
+                    </OnFail>
+                </FuseBox>
+            </Behavior>
+        </Root>
+        <ForestContainer>
+        </ForestContainer>
+        <EditorData EventSet="">
+            <Variables>
+                <Variable name="patrolActive" comment="" />
+                <Variable name="hasTarget" comment="" />
+                <Variable name="pointKind" comment="" />
+                <Variable name="waitSeconds" comment="" />
+                <Variable name="elapsed" comment="" />
+            </Variables>
+            <ForwardDeclarations />
+            <Root hasInputBreakpoint="0" comment="" breakpointFlags="0" saveVersion="2">
+                <OutputBreakpoints />
+                <Behavior />
+                <Forest />
+                <Comments />
+            </Root>
+        </EditorData>
+    </BehaviorTree>
+</BehaviorTrees>
