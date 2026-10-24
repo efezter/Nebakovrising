@@ -44,6 +44,7 @@
 			<Variable name="nebakovResumeMealWalk" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovResumeMealAtTable" type="_bool" values="false" isPersistent="0" form="single" />
 			<Variable name="nebakovMealTicks" type="_int" values="0" isPersistent="0" form="single" />
+			<Variable name="nebakovEveningIdle" type="_bool" values="false" isPersistent="0" form="single" />
 		</Variables>
 		<Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
 			<OnInit canSkip="1">
@@ -639,140 +640,32 @@
 										<Sequence>
 											<ExecuteLua code="
 												local castle = nebakovrising and nebakovrising.CastleUtils
-												local bedBehaviorEnabled = nebakovrising and nebakovrising.Config
-													and nebakovrising.Config.bedBehaviorEnabled == true
-												local sleepTime, gameHour = false, nil
-												if castle and castle.IsNpcSleepTime then
-													sleepTime, gameHour = castle.IsNpcSleepTime()
-												end
+												local enabled = nebakovrising and nebakovrising.Config and nebakovrising.Config.bedBehaviorEnabled == true
 												local assignment = castle and castle.GetBedAssignment(entity.this.id)
-												local isCandidate = castle and castle.trackedBedCandidatesByWuid
-													and castle.trackedBedCandidatesByWuid[tostring(entity.this.id)] ~= nil
-												data.nebakovBedManaged = bedBehaviorEnabled
-													and (assignment ~= nil or isCandidate)
-													or false
+												local candidate = castle and castle.trackedBedCandidatesByWuid and castle.trackedBedCandidatesByWuid[tostring(entity.this.id)] ~= nil
+												data.nebakovBedManaged = enabled and (assignment ~= nil or candidate) or false
 												data.nebakovHasBed = assignment ~= nil
-												local walkState = castle and castle.GetBedWalkState(entity.this.id)
-												local mealStage = castle and castle.GetMealProgress(entity)
-												local mealCollected = castle
-													and castle.HasCollectedMeal
-													and castle.HasCollectedMeal(entity) == true
-												if (mealStage == 'meal_ready' or mealStage == 'eating')
-													and not mealCollected then
-													mealStage = 'meal_pending'
-													castle.SetMealProgress(entity, 'meal_pending')
-													castle.SetBedWalkState(entity.this.id, 'idle')
-													walkState = 'idle'
-													System.LogAlways('[nebakovrising] Save-load: eski meal_ready kaydi gercek kase doldurma onayi olmadigindan yeniden alinacak')
-												end
-												data.nebakovResumeMealWalk = (
-													mealStage == 'walking_to_cauldron'
-													or mealStage == 'meal_pending'
-												)
-													and (walkState == nil or walkState == 'idle')
-												data.nebakovResumeMealAtTable = (
-													mealStage == 'meal_ready'
-													or mealStage == 'eating'
-												)
-													and (walkState == nil or walkState == 'idle')
-												if data.nebakovResumeMealAtTable then
-													castle.SetBedWalkState(entity.this.id, 'meal_ready')
-													castle.SetMealProgress(entity, 'meal_ready')
-													walkState = 'meal_ready'
-												end
-												data.nebakovMealReady = false
-												if walkState == 'meal_retry_wait' then
-													data.nebakovMealTicks = data.nebakovMealTicks + 1
-													if data.nebakovMealTicks >= 30 then
-														castle.SetBedWalkState(entity.this.id, 'idle')
-														walkState = 'idle'
-														data.nebakovMealTicks = 0
-													end
-												else
-													data.nebakovMealTicks = 0
-												end
-												data.nebakovMealReady = walkState == 'meal_ready'
-												data.nebakovPatrolStart = false
-												if castle and castle.ShouldStartPatrol then
-													local patrolOk, patrolResult = pcall(castle.ShouldStartPatrol, entity)
-													data.nebakovPatrolStart = patrolOk and patrolResult == true
-												end
-												if walkState == 'requested' then
-													data.nebakovRequestTicks = data.nebakovRequestTicks + 1
-													if data.nebakovRequestTicks >= 20 then
-														castle.SetBedWalkState(entity.this.id, 'idle')
-														walkState = 'idle'
-														data.nebakovRequestTicks = 0
-													end
-												else
-													data.nebakovRequestTicks = 0
-												end
-												data.nebakovWalkAvailable = bedBehaviorEnabled
-													and sleepTime
-													and data.nebakovBedManaged
-													and data.nebakovHasBed
-													and (walkState == nil or walkState == 'idle')
-												if data.nebakovBedManaged and not data.nebakovSchedulerLogged then
-													data.nebakovSchedulerLogged = true
-													System.LogAlways('[nebakovrising] NPC daily sleep schedule active; entity='
-														.. tostring(entity.this.id) .. ', sleepTime=' .. tostring(sleepTime)
-														.. ', hour=' .. tostring(gameHour))
-												end
-												if data.nebakovBedManaged
-													and data.nebakovLastSleepTime ~= sleepTime then
-													data.nebakovLastSleepTime = sleepTime
-													--[[
-													System.LogAlways('[nebakovrising] NPC sleep schedule changed; entity='
-														.. tostring(entity.this.id) .. ', sleepTime='
-														.. tostring(sleepTime) .. ', hour=' .. tostring(gameHour))
-													]]
-												end
+												local action = data.nebakovBedManaged and castle.NextNpcActivity(entity) or nil
+												data.nebakovWalkAvailable = action == 'sleep'
+												data.nebakovResumeMealWalk = action == 'meal_walk'
+												data.nebakovMealReady = action == 'meal_table'
+												data.nebakovPatrolStart = action == 'patrol'
+												data.nebakovEveningIdle = action == 'evening_idle'
 											" />
 											<IfCondition failOnCondition="false" condition="$nebakovWalkAvailable">
-												<Sequence>
-													<ExecuteLua code="
-														local castle = nebakovrising and nebakovrising.CastleUtils
-														if castle then
-															castle.SetBedWalkState(entity.this.id, 'requested')
-														end
-														System.LogAlways('[nebakovrising] Requesting sleep interrupt; entity='
-															.. tostring(entity.this.id) .. ', host=' .. tostring(data.mrkev))
-													" />
-													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_walk_to_bed'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="true" />
-													<ExecuteLua code="System.LogAlways('[nebakovrising] Sleep interrupt submitted; entity=' .. tostring(entity.this.id))" />
-												</Sequence>
+												<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_walk_to_bed'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="true" />
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovResumeMealWalk">
-												<Sequence>
-													<ExecuteLua code="
-														local castle = nebakovrising and nebakovrising.CastleUtils
-														if castle then
-															castle.SetBedWalkState(entity.this.id, 'meal_resuming')
-														end
-														System.LogAlways('[nebakovrising] Save-load: kayitli kazan yuruyusu interrupti yeniden baslatiliyor')
-													" />
-													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_resume_meal_walk'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
-												</Sequence>
+												<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_resume_meal_walk'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovMealReady">
-												<Sequence>
-													<ExecuteLua code="
-														local castle = nebakovrising and nebakovrising.CastleUtils
-														if castle then
-															castle.SetBedWalkState(entity.this.id, 'eating')
-															castle.SetMealProgress(entity, 'eating')
-														end
-														System.LogAlways('[nebakovrising] NPC kazan yeme davranisina hazir; masaya oturma interrupti baslatiliyor')
-													" />
-													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_eat_at_table'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
-													<ExecuteLua code="System.LogAlways('[nebakovrising] Table-eating interrupt submitted')" />
-												</Sequence>
+												<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_eat_at_table'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovPatrolStart">
-												<Sequence>
-													<ExecuteLua code="System.LogAlways('[nebakovrising] Patrol interrupt baslatiliyor; entity=' .. tostring(entity.this.id))" />
-													<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_patrol'" Priority="50" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
-												</Sequence>
+												<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_patrol'" Priority="50" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
+											</IfCondition>
+											<IfCondition failOnCondition="false" condition="$nebakovEveningIdle">
+												<AddInterrupt Target="$this.id" Host="$mrkev" Behavior="'nebakovrising_evening_idle'" Priority="100" IgnorePriorityOnPreviousInterrupt="false" urgency="Fast" Aliveness="Alive" Privileged="false" FastForward="false" />
 											</IfCondition>
 											<IfCondition failOnCondition="false" condition="$nebakovBedManaged &amp; ~$nebakovHasBed">
 												<Sequence>
@@ -806,6 +699,7 @@
 		<ForestContainer />
 		<EditorData EventSet="">
 			<Variables>
+				<Variable name="nebakovEveningIdle" comment="" />
 				<Variable name="arrowFlyingBy" comment="" />
 				<Variable name="assaultData" comment="" />
 				<Variable name="attackInitiatedByConcept" comment="" />

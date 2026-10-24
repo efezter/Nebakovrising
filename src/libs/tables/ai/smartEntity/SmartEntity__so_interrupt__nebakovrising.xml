@@ -1,53 +1,82 @@
 <?xml version="1.0" encoding="us-ascii"?>
-<database name="barbora" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../database.xsd">
-	<SmartEntitys version="1">
-		<SmartEntityTemplate BrainId="ea3ff907-6743-4ad4-8723-2c14ac2a01f0" DatabaseId="43c857b4-032b-844f-3d1b-3cc90d5a2382" Name="so_interrupt">
-			<BehaviorTemplates>
-				<SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_walk_to_bed" PreventsMonsterLod="true">
-					<TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_walk_to_bed" />
-					<Inboxes>
-						<InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
-						<InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
-						<InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
-						<InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
-						<InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
-						<InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
-					</Inboxes>
-				</SmartBehaviorTemplate>
-				<SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_resume_meal_walk" PreventsMonsterLod="true">
-					<TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_resume_meal_walk" />
-					<Inboxes>
-						<InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
-						<InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
-						<InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
-						<InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
-						<InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
-						<InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
-					</Inboxes>
-				</SmartBehaviorTemplate>
-				<SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_eat_at_table" PreventsMonsterLod="true">
-					<TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_eat_at_table" />
-					<Inboxes>
-						<InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
-						<InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
-						<InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
-						<InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
-						<InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
-						<InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
-					</Inboxes>
-				</SmartBehaviorTemplate>
-				<SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol" PreventsMonsterLod="true">
-					<TreeLocation FileName="nebakovrising_patrol.xml" TreeName="nebakovrising_patrol" />
-					<Inboxes>
-						<InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
-						<InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
-						<InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
-						<InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
-						<InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
-						<InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
-					</Inboxes>
-				</SmartBehaviorTemplate>
-			</BehaviorTemplates>
-		</SmartEntityTemplate>
-	</SmartEntitys>
+<database xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="barbora" xsi:noNamespaceSchemaLocation="../../database.xsd">
+    <SmartEntitys version="1">
+        <SmartEntityTemplate BrainId="ea3ff907-6743-4ad4-8723-2c14ac2a01f0" DatabaseId="43c857b4-032b-844f-3d1b-3cc90d5a2382" Name="so_interrupt">
+            <BehaviorTemplates>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_walk_to_bed" PreventsMonsterLod="true">
+                    <TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_walk_to_bed" />
+                    <Inboxes>
+                        <InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
+                        <InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
+                        <InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
+                        <InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
+                        <InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
+                        <InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
+                    </Inboxes>
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_resume_meal_walk" PreventsMonsterLod="true">
+                    <TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_resume_meal_walk" />
+                    <Inboxes>
+                        <InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
+                        <InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
+                        <InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
+                        <InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
+                        <InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
+                        <InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
+                    </Inboxes>
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_eat_at_table" PreventsMonsterLod="true">
+                    <TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_eat_at_table" />
+                    <Inboxes>
+                        <InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
+                        <InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
+                        <InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
+                        <InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
+                        <InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
+                        <InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
+                    </Inboxes>
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol" PreventsMonsterLod="true">
+                    <TreeLocation FileName="nebakovrising_patrol.xml" TreeName="nebakovrising_patrol" />
+                    <Inboxes>
+                        <InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
+                        <InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
+                        <InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
+                        <InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
+                        <InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
+                        <InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
+                    </Inboxes>
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_evening_idle" PreventsMonsterLod="true">
+                    <TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_evening_idle" />
+                    <Inboxes>
+                        <InboxTemplate InboxId="80cbc23c-5752-43e3-9405-38355ad8d617" Priority="0" />
+                        <InboxTemplate InboxId="5201b5fc-b24b-49ab-b409-23c13ae08e4e" Priority="0" />
+                        <InboxTemplate InboxId="5450a641-8c06-4839-a5d8-dd750a977c19" Priority="0" />
+                        <InboxTemplate InboxId="b4c700f0-eb28-4605-a0dd-a7188900f83a" Priority="0" />
+                        <InboxTemplate InboxId="c1221861-49ff-4dbc-bc94-de1bd2601a1a" Priority="0" />
+                        <InboxTemplate InboxId="42b04ead-5936-2286-c9c3-85769ff854b2" Priority="0" />
+                    </Inboxes>
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_activity_heartbeat">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_activity_heartbeat" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_stand">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_stand" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_post_meal_idle">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_post_meal_idle" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_meal_at_table">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_meal_at_table" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_activity_deadline">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_activity_deadline" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol_stop">
+                    <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_patrol_stop" />
+                </SmartBehaviorTemplate>
+            </BehaviorTemplates>
+        </SmartEntityTemplate>
+    </SmartEntitys>
 </database>

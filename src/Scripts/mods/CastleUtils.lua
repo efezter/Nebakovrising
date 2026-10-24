@@ -64,11 +64,16 @@ CastleUtils.bedAssignmentsByWuid = CastleUtils.bedAssignmentsByWuid or {}
 CastleUtils.mealBenchOwners = CastleUtils.mealBenchOwners or {}
 CastleUtils.mealBenchAssignments = CastleUtils.mealBenchAssignments or {}
 CastleUtils.mealBenchAttempts = CastleUtils.mealBenchAttempts or {}
+CastleUtils.mealTargetMissingSince = CastleUtils.mealTargetMissingSince or {}
+CastleUtils.activityRuns = CastleUtils.activityRuns or {}
+CastleUtils.activitySerial = CastleUtils.activitySerial or math.random(1000000, 1000000000)
 CastleUtils.trackedBedOwners = CastleUtils.trackedBedOwners or {}
 CastleUtils.trackedBedCandidates = CastleUtils.trackedBedCandidates or {}
 CastleUtils.trackedBedCandidatesByWuid = CastleUtils.trackedBedCandidatesByWuid or {}
 CastleUtils.deathMonitorWarnings = CastleUtils.deathMonitorWarnings or {}
 CastleUtils.bedWalkStates = CastleUtils.bedWalkStates or {}
+CastleUtils.npcWakeSlots = CastleUtils.npcWakeSlots or {}
+CastleUtils.wakeUpSlotsAssigned = false
 CastleUtils.restoredNpcNames = CastleUtils.restoredNpcNames or {}
 CastleUtils._persistentStoreName = "nebakovrising_SaveStore"
 CastleUtils.mealFireplaceSelector = CastleUtils.mealFireplaceSelector
@@ -373,6 +378,14 @@ function CastleUtils.RemoveManagedNpcRecord(entityName)
     if type(entityName) ~= "string" then return false end
     local records = getPersistentRecords(false)
     if not records or not records[entityName] then return false end
+    CastleUtils.ReleaseMealBenchForNpc(entityName)
+    for selector, owner in pairs(CastleUtils.patrolOwners) do
+        if owner == entityName then CastleUtils.patrolOwners[selector] = nil end
+    end
+    CastleUtils.patrolAssignments[entityName] = nil
+    for key, run in pairs(CastleUtils.activityRuns) do
+        if run.npcKey == entityName then CastleUtils.activityRuns[key] = nil end
+    end
     records[entityName] = nil
     log("NPC save kaydi olum nedeniyle silindi: " .. entityName)
     return true
@@ -417,6 +430,8 @@ function CastleUtils.ClearManagedNpcs()
     end
 
     CastleUtils.ResetBedAssignments()
+    CastleUtils.npcWakeSlots = {}
+    CastleUtils.wakeUpSlotsAssigned = false
     CastleUtils.restoredNpcNames = {}
     CastleUtils._restoreInProgress = false
     if nebakovrising.Spawner then
@@ -428,7 +443,54 @@ function CastleUtils.ClearManagedNpcs()
     return removedNpcs, clearedRecords
 end
 
-function CastleUtils.IsNpcSleepTime()
+-- Yonetilen ve yatakta olan NPC'lerin wuid listesini dondurur
+function CastleUtils.GetSleepingNpcWuids()
+    local result = {}
+    for _, npc in pairs(System.GetEntitiesByClass("NPC") or {}) do
+        local name = npc.GetName and npc:GetName()
+        if name and string.sub(name, 1, 14) == "nebakovrising_" then
+            table.insert(result, npc.id)
+        end
+    end
+    return result
+end
+
+-- Uyanma sirasini rastgele atar (bir kez cagrilir, idempotent)
+function CastleUtils.AssignWakeUpSlots()
+    if CastleUtils.wakeUpSlotsAssigned then return end
+    CastleUtils.wakeUpSlotsAssigned = true
+
+    local sleeping = CastleUtils.GetSleepingNpcWuids()
+    if #sleeping == 0 then
+        log("[nebakovrising] Uyanma sirasi: yatan NPC bulunamadi.")
+        return
+    end
+
+    -- Fisher-Yates shuffle → rastgele siralama
+    for i = #sleeping, 2, -1 do
+        local j = math.random(i)
+        sleeping[i], sleeping[j] = sleeping[j], sleeping[i]
+    end
+
+    local cfg = nebakovrising.Config
+    local minGap = cfg and cfg.wakeStaggerMin or 5
+    local maxGap = cfg and cfg.wakeStaggerMax or 10
+    local now = System.GetCurrTime()
+    local cursor = now
+
+    for i, wuid in ipairs(sleeping) do
+        if i == 1 then
+            CastleUtils.npcWakeSlots[tostring(wuid)] = now
+        else
+            cursor = cursor + math.random(minGap, maxGap)
+            CastleUtils.npcWakeSlots[tostring(wuid)] = cursor
+        end
+    end
+
+    log("[nebakovrising] Uyanma sirasi atandi: " .. #sleeping .. " NPC, ilk=" .. tostring(sleeping[1]))
+end
+
+function CastleUtils.IsNpcSleepTime(npcWuid)
     if not Calendar or type(Calendar.GetWorldHourOfDay) ~= "function" then
         if not CastleUtils._sleepTimeApiWarningLogged then
             CastleUtils._sleepTimeApiWarningLogged = true
@@ -459,10 +521,35 @@ function CastleUtils.IsNpcSleepTime()
         return false, hour
     end
 
+    local inSleepWindow
     if startHour < wakeHour then
-        return hour >= startHour and hour < wakeHour, hour
+        inSleepWindow = hour >= startHour and hour < wakeHour
+    else
+        inSleepWindow = hour >= startHour or hour < wakeHour
     end
-    return hour >= startHour or hour < wakeHour, hour
+
+    if inSleepWindow then
+        return true, hour
+    end
+
+    -- Uyku penceresi bitti (saat >= wakeHour)
+    if npcWuid == nil then
+        return false, hour
+    end
+
+    -- Bu NPC'nin uyanma slotu kontrolu
+    CastleUtils.AssignWakeUpSlots()
+    local slot = CastleUtils.npcWakeSlots[tostring(npcWuid)]
+    if slot == nil then
+        return false, hour
+    end
+
+    local now = System.GetCurrTime()
+    if now < slot then
+        return true, hour
+    end
+
+    return false, hour
 end
 
 local function getEntityKey(entity, fallbackId)
@@ -570,11 +657,12 @@ function CastleUtils.EnsureNpcHasMealBowl(npcWuid)
     return addedItemId
 end
 
-function CastleUtils.SetMealProgress(npc, stage)
+function CastleUtils.SetMealProgress(npc, stage, token)
     if not npc then
         log("NPC yemek asamasi kaydedilemedi: entity yok.")
         return false
     end
+    if token and not CastleUtils.OwnsNpcActivity(npc.this.id, token) then return false end
 
     local entityName = getEntityKey(npc, npc.this and npc.this.id)
     local records = getPersistentRecords(stage ~= nil)
@@ -585,6 +673,7 @@ function CastleUtils.SetMealProgress(npc, stage)
         return false
     end
 
+    local previous = record.mealStage
     record.mealStage = stage
     if stage == nil then record.mealKind = nil end
     if stage == "meal_ready" then
@@ -592,9 +681,13 @@ function CastleUtils.SetMealProgress(npc, stage)
     elseif stage == nil or stage == "walking_to_cauldron"
         or stage == "meal_pending" then
         record.mealCollected = false
+        record.mealEaten = nil
+        record.mealQueueOrder = nil
     end
-    log("NPC yemek asamasi save'e yazildi: " .. entityName
-        .. ", stage=" .. tostring(stage))
+    if previous ~= stage then
+        log("NPC yemek asamasi: " .. entityName .. ", " .. tostring(previous)
+            .. " -> " .. tostring(stage))
+    end
     return true
 end
 
@@ -656,8 +749,6 @@ local function resolveMealBench(selector)
         }
     end
 
-    log("Yemek bench'i bulunamadi veya smartobject WUID/konumu hazir degil: "
-        .. tostring(selector) .. ", WUID=" .. tostring(wuid))
     return nil
 end
 
@@ -682,133 +773,411 @@ local function getMealRecord(npcKey, createStore)
     return type(record) == "table" and record or nil
 end
 
-local function persistMealBench(npcKey, selector)
+local function mealSetting(name, fallback)
+    local value = nebakovrising.Config and nebakovrising.Config[name]
+    return type(value) == "number" and math.max(1, value) or fallback
+end
+
+local function clearMealReservation(npcKey)
+    local released = false
+    for selector, owner in pairs(CastleUtils.mealBenchOwners) do
+        if owner == npcKey then
+            CastleUtils.mealBenchOwners[selector] = nil
+            released = true
+        end
+    end
+    CastleUtils.mealBenchAssignments[npcKey] = nil
+    CastleUtils.mealTargetMissingSince[npcKey] = nil
     local record = getMealRecord(npcKey, false)
-    if record then record.mealBenchSelector = selector end
+    if record then record.mealBenchSelector = nil end
+    return released
+end
+
+local function knownMealSelector(selector)
+    for _, candidate in ipairs(CastleUtils.mealBenchSelectors) do
+        if selector == candidate then return true end
+    end
+    return false
+end
+
+local function mealWasEaten(record)
+    return record ~= nil and (record.mealEaten == true
+        or (record.mealKind == "evening" and record.eveningMealDone == true))
+end
+
+local function ensureMealQueueOrder(record)
+    if type(record.mealQueueOrder) ~= "number" then
+        local nextOrder = CastleUtils.mealQueueSerial or 0
+        for _, other in pairs(getPersistentRecords(false) or {}) do
+            if type(other) == "table" and type(other.mealQueueOrder) == "number" then
+                nextOrder = math.max(nextOrder, other.mealQueueOrder)
+            end
+        end
+        CastleUtils.mealQueueSerial = nextOrder + 1
+        record.mealQueueOrder = CastleUtils.mealQueueSerial
+    end
+    return record.mealQueueOrder
+end
+
+local function mealSlotAvailable(bench, npcKey)
+    if not XGenAIModule or type(XGenAIModule.FindLinks) ~= "function" then return true end
+    local ok, occupants = pcall(XGenAIModule.FindLinks, bench.wuid, "benchOccupant")
+    if not ok then return false end
+    for _, wuid in pairs(type(occupants) == "table" and occupants or {}) do
+        if getMealNpcKey(wuid) ~= npcKey then return false end
+    end
+    return true
+end
+
+local function mealWuidReservedByOther(bench, npcKey)
+    for selector, owner in pairs(CastleUtils.mealBenchOwners) do
+        if owner ~= npcKey then
+            local other = resolveMealBench(selector)
+            if other and tostring(other.wuid) == tostring(bench.wuid) then return true end
+        end
+    end
+    return false
+end
+
+local function mealAttemptBlocked(npcKey, selector)
+    local attempts = CastleUtils.mealBenchAttempts[npcKey]
+    local untilTime = attempts and attempts[selector]
+    if untilTime == true then
+        untilTime = System.GetCurrTime() + mealSetting("mealSeatRetryCooldown", 60)
+        attempts[selector] = untilTime
+    end
+    return type(untilTime) == "number" and System.GetCurrTime() < untilTime
+end
+
+local function blockMealAttempt(npcKey, selector)
+    if not selector then return end
+    CastleUtils.mealBenchAttempts[npcKey] = CastleUtils.mealBenchAttempts[npcKey] or {}
+    CastleUtils.mealBenchAttempts[npcKey][selector] = System.GetCurrTime()
+        + mealSetting("mealSeatRetryCooldown", 60)
+end
+
+local function assignMealBench(npcKey, record, bench)
+    CastleUtils.mealBenchOwners[bench.selector] = npcKey
+    CastleUtils.mealBenchAssignments[npcKey] = bench
+    record.mealBenchSelector = bench.selector
+    CastleUtils.mealTargetMissingSince[npcKey] = nil
+    log("Yemek koltugu rezerve edildi: NPC=" .. npcKey .. ", selector=" .. bench.selector
+        .. ", WUID=" .. tostring(bench.wuid) .. ", sira=" .. tostring(record.mealQueueOrder))
+end
+
+-- Queue order is persisted; a later GetMealBench caller cannot overtake ready diners.
+local function fillMealQueue()
+    local records = getPersistentRecords(false) or {}
+    for selector, owner in pairs(CastleUtils.mealBenchOwners) do
+        local record = records[owner]
+        if type(record) ~= "table" or not record.managed or record.mealStage == nil
+            or not knownMealSelector(selector) then
+            clearMealReservation(owner)
+        end
+    end
+    local waiting = {}
+    for name, record in pairs(records) do
+        if type(record) == "table" and record.managed and record.mealCollected
+            and record.mealStage ~= nil and not mealWasEaten(record)
+            and not record.mealBenchSelector then
+            waiting[#waiting + 1] = { key = name, record = record, order = ensureMealQueueOrder(record) }
+        end
+    end
+    table.sort(waiting, function(a, b)
+        if a.order == b.order then return a.key < b.key end
+        return a.order < b.order
+    end)
+    local usedWuids = {}
+    for selector in pairs(CastleUtils.mealBenchOwners) do
+        local bench = resolveMealBench(selector)
+        if bench then usedWuids[tostring(bench.wuid)] = true end
+    end
+    for _, candidate in ipairs(waiting) do
+        for _, selector in ipairs(CastleUtils.mealBenchSelectors) do
+            if not CastleUtils.mealBenchOwners[selector]
+                and not mealAttemptBlocked(candidate.key, selector) then
+                local bench = resolveMealBench(selector)
+                if bench and not usedWuids[tostring(bench.wuid)]
+                    and mealSlotAvailable(bench, candidate.key) then
+                    assignMealBench(candidate.key, candidate.record, bench)
+                    usedWuids[tostring(bench.wuid)] = true
+                    break
+                end
+            end
+        end
+    end
 end
 
 function CastleUtils.ReserveMealBenches()
-    local records = getPersistentRecords(false)
-    if not records then return 0 end
-
-    local reserved = 0
-    for entityName, record in pairs(records) do
-        if type(record) == "table" and record.managed and record.mealBenchSelector then
-            local selector = record.mealBenchSelector
-            local owner = CastleUtils.mealBenchOwners[selector]
-            if record.mealStage == nil then
+    local candidates = {}
+    local names = {}
+    local records = getPersistentRecords(false) or {}
+    for name in pairs(records) do names[#names + 1] = name end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local record = records[name]
+        if type(record) == "table" and record.managed then
+            if record.mealStage and mealWasEaten(record) then record.mealEaten = true end
+            if record.mealStage and record.mealCollected then
+                candidates[#candidates + 1] = { key = name, record = record,
+                    order = ensureMealQueueOrder(record) }
+            else
                 record.mealBenchSelector = nil
-            elseif not owner or owner == entityName then
-                CastleUtils.mealBenchOwners[selector] = entityName
-                reserved = reserved + 1
-                log("Save'den yemek bench'i rezerve edildi: "
-                    .. tostring(entityName) .. " -> " .. tostring(selector))
+                record.mealQueueOrder = nil
             end
+        end
+    end
+    table.sort(candidates, function(a, b)
+        if a.order == b.order then return a.key < b.key end
+        return a.order < b.order
+    end)
+    local reserved = 0
+    local usedWuids = {}
+    for _, candidate in ipairs(candidates) do
+        local selector = candidate.record.mealBenchSelector
+        local bench = selector and resolveMealBench(selector)
+        local duplicate = bench and usedWuids[tostring(bench.wuid)]
+        local owner = selector and CastleUtils.mealBenchOwners[selector]
+        if selector and knownMealSelector(selector) and (not owner or owner == candidate.key)
+            and not duplicate then
+            CastleUtils.mealBenchOwners[selector] = candidate.key
+            if bench then usedWuids[tostring(bench.wuid)] = true end
+            reserved = reserved + 1
+        else
+            candidate.record.mealBenchSelector = nil
         end
     end
     return reserved
 end
 
 function CastleUtils.GetMealBench(npcWuid)
-    if npcWuid == nil then
-        log("Yemek bench'i atanamadi: NPC WUID yok.")
-        return nil
-    end
-
+    if npcWuid == nil then return nil end
     local npcKey = getMealNpcKey(npcWuid)
+    local record = getMealRecord(npcKey, false)
+    if not record or not record.managed or not record.mealCollected then return nil end
+    local selector = record.mealBenchSelector
+    if selector then
+        local owner = CastleUtils.mealBenchOwners[selector]
+        if not knownMealSelector(selector) or (owner and owner ~= npcKey)
+            or mealAttemptBlocked(npcKey, selector) then
+            clearMealReservation(npcKey)
+        else
+            CastleUtils.mealBenchOwners[selector] = npcKey
+            local bench = resolveMealBench(selector)
+            if bench and not mealWuidReservedByOther(bench, npcKey)
+                and mealSlotAvailable(bench, npcKey) then
+                CastleUtils.mealBenchAssignments[npcKey] = bench
+                CastleUtils.mealTargetMissingSince[npcKey] = nil
+                return bench.entity, bench.wuid, bench.position, selector
+            end
+            local now = System.GetCurrTime()
+            local since = CastleUtils.mealTargetMissingSince[npcKey] or now
+            CastleUtils.mealTargetMissingSince[npcKey] = since
+            if not bench and now - since < mealSetting("mealTargetReadyTimeout", 10) then
+                return nil, nil, nil, nil, "target_not_ready"
+            end
+            blockMealAttempt(npcKey, selector)
+            clearMealReservation(npcKey)
+            log("Yemek koltugu kullanilamiyor: NPC=" .. npcKey .. ", selector=" .. selector
+                .. ", neden=" .. (bench and "seat_busy" or "target_invalid"))
+        end
+    end
+    ensureMealQueueOrder(record)
+    fillMealQueue()
     local assignment = CastleUtils.mealBenchAssignments[npcKey]
     if assignment then
-        local bench = resolveMealBench(assignment.selector)
-        if bench then
-            return bench.entity, bench.wuid, bench.position, bench.selector
-        end
-        return nil
+        return assignment.entity, assignment.wuid, assignment.position, assignment.selector
     end
-
-    -- Save'den gelen kayitli koltuk varsa baska koltuga dusme; hazir olana kadar bekle.
-    local record = getMealRecord(npcKey, false)
-    local savedSelector = record and record.mealBenchSelector
-    if savedSelector then
-        local owner = CastleUtils.mealBenchOwners[savedSelector]
-        if not owner or owner == npcKey then
-            local bench = resolveMealBench(savedSelector)
-            if bench then
-                CastleUtils.mealBenchOwners[savedSelector] = npcKey
-                CastleUtils.mealBenchAssignments[npcKey] = bench
-                log("Kayitli yemek bench'i geri yuklendi: NPC=" .. npcKey .. " -> " .. savedSelector)
-                return bench.entity, bench.wuid, bench.position, bench.selector
-            end
-            return nil
-        end
-        record.mealBenchSelector = nil
-    end
-
-    -- Yataklardaki gibi: dizideki ilk bos koltuk, sirayla.
-    for _, selector in ipairs(CastleUtils.mealBenchSelectors) do
-        if not CastleUtils.mealBenchOwners[selector] then
-            local bench = resolveMealBench(selector)
-            if bench then
-                CastleUtils.mealBenchOwners[selector] = npcKey
-                CastleUtils.mealBenchAssignments[npcKey] = bench
-                persistMealBench(npcKey, selector)
-                log("Yemek bench'i NPC'ye atandi: NPC=" .. npcKey .. " -> " .. selector)
-                return bench.entity, bench.wuid, bench.position, bench.selector
-            end
-        end
-    end
-
-    local occupied = {}
-    for selector, owner in pairs(CastleUtils.mealBenchOwners) do
-        occupied[#occupied + 1] = string.sub(selector, 1, 60) .. " -> " .. tostring(owner)
-    end
-    log("NPC icin bos yemek bench'i yok: " .. npcKey .. " (dolu: "
-        .. (#occupied > 0 and table.concat(occupied, "; ") or "yok") .. ")")
-    return nil
+    return nil, nil, nil, nil, "no_free_seat"
 end
 
-function CastleUtils.RetryMealBench(npcWuid)
+function CastleUtils.RetryMealBench(npcWuid, reason)
     if npcWuid == nil then return false end
-
     local npcKey = getMealNpcKey(npcWuid)
-    persistMealBench(npcKey, nil)
+    local record = getMealRecord(npcKey, false)
     local assignment = CastleUtils.mealBenchAssignments[npcKey]
-    if not assignment then
-        log("Yemek bench'i yeniden atanamadi: mevcut atama yok: " .. npcKey)
-        return false
-    end
-
-    local attempts = CastleUtils.mealBenchAttempts[npcKey]
-    if type(attempts) ~= "table" then
-        attempts = {}
-        CastleUtils.mealBenchAttempts[npcKey] = attempts
-    end
-    attempts[assignment.selector] = true
-    if CastleUtils.mealBenchOwners[assignment.selector] == npcKey then
-        CastleUtils.mealBenchOwners[assignment.selector] = nil
-    end
-    CastleUtils.mealBenchAssignments[npcKey] = nil
-
-    log("NPC oturamadigi yemek bench'ini bir sonraki deneme icin birakti: NPC="
-        .. npcKey .. " -> " .. tostring(assignment.selector))
-    return true
+    local selector = assignment and assignment.selector or (record and record.mealBenchSelector)
+    if reason ~= "eat_failed" then blockMealAttempt(npcKey, selector) end
+    clearMealReservation(npcKey)
+    log("Yemek koltugu yeniden denenecek: NPC=" .. npcKey .. ", selector=" .. tostring(selector)
+        .. ", neden=" .. tostring(reason or "seat_failed"))
+    return selector ~= nil
 end
 
 function CastleUtils.ReleaseMealBenchForNpc(npcWuid)
     if npcWuid == nil then return false end
-
     local npcKey = getMealNpcKey(npcWuid)
-    persistMealBench(npcKey, nil)
-    local assignment = CastleUtils.mealBenchAssignments[npcKey]
-    if not assignment then return false end
-
-    if CastleUtils.mealBenchOwners[assignment.selector] == npcKey then
-        CastleUtils.mealBenchOwners[assignment.selector] = nil
-    end
-    CastleUtils.mealBenchAssignments[npcKey] = nil
+    local released = clearMealReservation(npcKey)
     CastleUtils.mealBenchAttempts[npcKey] = nil
-    log("NPC yemek bench atamasi serbest birakildi: NPC=" .. npcKey
-        .. " -> " .. tostring(assignment.selector))
+    local record = getMealRecord(npcKey, false)
+    if record then record.mealQueueOrder = nil end
+    return released
+end
+
+function CastleUtils.HasEatenMeal(entity)
+    local record = entity and getMealRecord(getEntityKey(entity, entity.this.id), false)
+    return mealWasEaten(record)
+end
+
+function CastleUtils.OnMealCollected(entity, token)
+    if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    if not CastleUtils.SetMealProgress(entity, "meal_ready", token) then return false end
+    local record = getMealRecord(getEntityKey(entity, entity.this.id), false)
+    ensureMealQueueOrder(record)
+    -- Reserve synchronously before the same BT continues to the table function.
+    CastleUtils.GetMealBench(entity.this.id)
     return true
+end
+
+function CastleUtils.OnMealEaten(entity, token)
+    if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    local record = getMealRecord(getEntityKey(entity, entity.this.id), false)
+    if not record then return false end
+    record.mealEaten = true
+    CastleUtils.MarkEveningMealEaten(entity)
+    CastleUtils.SetMealProgress(entity, "leaving_seat", token)
+    return true
+end
+
+function CastleUtils.FinishMeal(entity, token)
+    if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    CastleUtils.ReleaseMealBenchForNpc(entity.this.id)
+    CastleUtils.SetMealProgress(entity, nil, token)
+    return true
+end
+
+-- Requests and running BTs have distinct states. Only the current token may clean up.
+function CastleUtils.OwnsNpcActivity(npcWuid, token)
+    local run = CastleUtils.activityRuns[tostring(npcWuid)]
+    return run ~= nil and run.started == true and run.token == token
+end
+
+function CastleUtils.RequestNpcActivity(entity, kind)
+    local key = tostring(entity.this.id)
+    if CastleUtils.activityRuns[key] then return false end
+    CastleUtils.activitySerial = CastleUtils.activitySerial + 1
+    CastleUtils.activityRuns[key] = { token = CastleUtils.activitySerial, kind = kind,
+        npcKey = getEntityKey(entity, entity.this.id), requestedAt = System.GetCurrTime() }
+    CastleUtils.SetBedWalkState(entity.this.id, kind .. "_requested")
+    return true
+end
+
+function CastleUtils.BeginNpcActivity(npcWuid, kind)
+    local key = tostring(npcWuid)
+    local run = CastleUtils.activityRuns[key]
+    if not run or run.started or run.kind ~= kind then return 0 end
+    run.started = true
+    run.heartbeat = System.GetCurrTime()
+    CastleUtils.SetBedWalkState(npcWuid, kind == "patrol" and "patrolling" or kind)
+    log("Davranis basladi: NPC=" .. run.npcKey .. ", tur=" .. kind .. ", token=" .. run.token)
+    return run.token
+end
+
+function CastleUtils.ActivityHeartbeat(npcWuid, token)
+    if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
+    CastleUtils.activityRuns[tostring(npcWuid)].heartbeat = System.GetCurrTime()
+    return true
+end
+
+function CastleUtils.SetActivityPhase(entity, token, phase, timeout)
+    if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    local run = CastleUtils.activityRuns[tostring(entity.this.id)]
+    if run.phase ~= phase then
+        log("Davranis asamasi: NPC=" .. run.npcKey .. ", tur=" .. run.kind
+            .. ", asama=" .. phase .. ", token=" .. token)
+    end
+    run.phase = phase
+    run.deadline = timeout and (System.GetCurrTime() + timeout) or nil
+    CastleUtils.SetBedWalkState(entity.this.id, phase, token)
+    return true
+end
+
+function CastleUtils.ActivityPhaseExpired(npcWuid, token)
+    if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return true end
+    local deadline = CastleUtils.activityRuns[tostring(npcWuid)].deadline
+    return deadline ~= nil and System.GetCurrTime() >= deadline
+end
+
+function CastleUtils.MealSeatTimedOut(npcWuid, token)
+    if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return true end
+    local phase = CastleUtils.activityRuns[tostring(npcWuid)].phase
+    return (phase == "seating" or phase == "seated")
+        and (CastleUtils.IsNpcSleepTime() or CastleUtils.ActivityPhaseExpired(npcWuid, token))
+end
+
+function CastleUtils.FinishNpcActivity(npcWuid, token)
+    if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
+    CastleUtils.activityRuns[tostring(npcWuid)] = nil
+    CastleUtils.SetBedWalkState(npcWuid, "idle")
+    return true
+end
+
+function CastleUtils.FailNpcActivity(entity, token)
+    if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    local run = CastleUtils.activityRuns[tostring(entity.this.id)]
+    local assignment = CastleUtils.patrolAssignments[run.npcKey]
+    if run.kind == "patrol" and assignment then
+        CastleUtils.patrolBlocked[assignment.selector] = System.GetCurrTime() + 120
+    end
+    -- Keep reservations until the next BT has physically stood up.
+    log("Davranis kesildi: NPC=" .. run.npcKey .. ", tur=" .. run.kind
+        .. ", asama=" .. tostring(run.phase) .. ", token=" .. token)
+    CastleUtils.activityRuns[tostring(entity.this.id)] = nil
+    CastleUtils.SetBedWalkState(entity.this.id, "recovery_needed")
+    return true
+end
+
+function CastleUtils.ReleasePatrolAfterStanding(npcWuid, token)
+    if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
+    return CastleUtils.ReleasePatrolForNpc(npcWuid)
+end
+
+function CastleUtils.IsPostMealIdle(entity)
+    local record = entity and getMealRecord(getEntityKey(entity, entity.this.id), false)
+    local sleeping, hour = CastleUtils.IsNpcSleepTime()
+    local mealHour = nebakovrising.Config.eveningMealHour
+    return record ~= nil and record.eveningMealDone == true and not sleeping
+        and type(hour) == "number" and type(mealHour) == "number" and hour >= mealHour
+end
+
+function CastleUtils.NextNpcActivity(entity)
+    if not entity or not entity.this or not nebakovrising.Config.bedBehaviorEnabled then return nil end
+    local npcKey = getEntityKey(entity, entity.this.id)
+    local record = getMealRecord(npcKey, false)
+    if not record or not record.managed then return nil end
+    if record.mealStage and mealWasEaten(record) then record.mealEaten = true end
+    local key = tostring(entity.this.id)
+    local run = CastleUtils.activityRuns[key]
+    if not run or run.kind == "patrol" then CastleUtils.ShouldStartEveningMeal(entity) end
+    if run then
+        local now = System.GetCurrTime()
+        local expired = (not run.started and now - run.requestedAt >= mealSetting("activityRequestTimeout", 10))
+            or (run.started and now - run.heartbeat >= mealSetting("activityHeartbeatTimeout", 15))
+        if not expired then return nil end
+        log("Davranis watchdog: NPC=" .. npcKey .. ", tur=" .. run.kind
+            .. ", neden=" .. (run.started and "heartbeat_timeout" or "start_timeout"))
+        CastleUtils.activityRuns[key] = nil
+        CastleUtils.SetBedWalkState(entity.this.id, "recovery_needed")
+    end
+    local sleeping = CastleUtils.IsNpcSleepTime()
+    local kind
+    if sleeping then
+        if CastleUtils.GetBedAssignment(entity.this.id) then kind = "sleep" end
+    elseif record.mealStage ~= nil then
+        if record.mealCollected then
+            kind = "meal_table"
+        else
+            CastleUtils.SetMealProgress(entity, "meal_pending")
+            kind = "meal_walk"
+        end
+    elseif CastleUtils.IsPostMealIdle(entity) then
+        kind = "evening_idle"
+    else
+        local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcKey)
+        if role and role.patrol then kind = "patrol" end
+    end
+    if kind and CastleUtils.RequestNpcActivity(entity, kind) then return kind end
+    return nil
 end
 
 -- ============================================================
@@ -818,7 +1187,6 @@ CastleUtils.patrolOwners = CastleUtils.patrolOwners or {}
 CastleUtils.patrolAssignments = CastleUtils.patrolAssignments or {}
 CastleUtils.patrolHeartbeats = CastleUtils.patrolHeartbeats or {}
 CastleUtils.patrolBlocked = CastleUtils.patrolBlocked or {}
-local patrolStaleSeconds = 6
 
 local function getPatrolRole(npcKey)
     local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcKey)
@@ -1106,47 +1474,26 @@ function CastleUtils.MarkEveningMealEaten(entity)
 end
 
 function CastleUtils.PatrolShouldStop(entity)
-    if CastleUtils.IsNpcSleepTime() then return true end
-    return entity ~= nil and CastleUtils.GetMealProgress(entity) ~= nil
+    local stop = CastleUtils.IsNpcSleepTime() or (entity ~= nil
+        and (CastleUtils.GetMealProgress(entity) ~= nil or CastleUtils.IsPostMealIdle(entity)))
+    if stop and entity and entity.this then
+        local run = CastleUtils.activityRuns[tostring(entity.this.id)]
+        if run and run.kind == "patrol" then
+            CastleUtils.SetBedWalkState(entity.this.id, "patrol_exiting", run.token)
+        end
+    end
+    return stop
 end
 
 -- switch.xml dongusu cagirir; true ise patrol interrupt'i baslatilmali.
 function CastleUtils.ShouldStartPatrol(entity)
-    if not entity or not entity.GetName then return false end
-    local wuid = entity.this and entity.this.id
-    local npcKey = entity:GetName()
-    if wuid == nil or not getPatrolRole(npcKey) then return false end
-
-    local state = CastleUtils.GetBedWalkState(wuid)
-    local sleepTime = CastleUtils.IsNpcSleepTime()
-
-    -- Patrol'dayken meal_pending yazilir; patrol agaci PatrolShouldStop ile ayaga kalkip
-    -- kendiliginden cikar, sonra idle olunca yemek zinciri baslar.
-    if state == nil or state == "idle" or state == "patrolling" then
-        CastleUtils.ShouldStartEveningMeal(entity)
-    end
-
-    if state == "patrolling" then
-        if sleepTime then
-            CastleUtils.ReleasePatrolForNpc(wuid)
-            CastleUtils.SetBedWalkState(wuid, "idle")
-            return false
-        end
-        local beat = CastleUtils.patrolHeartbeats[tostring(wuid)]
-        if not beat or System.GetCurrTime() - beat > patrolStaleSeconds then
-            CastleUtils.SetBedWalkState(wuid, "idle")
-        end
+    if not entity or not entity.this then return false end
+    local npcKey = getMealNpcKey(entity.this.id)
+    if not getPatrolRole(npcKey) or CastleUtils.IsNpcSleepTime()
+        or CastleUtils.IsPostMealIdle(entity) or CastleUtils.GetMealProgress(entity) ~= nil then
         return false
     end
-
-    if sleepTime or (state ~= nil and state ~= "idle") then return false end
-    if CastleUtils.GetMealProgress(entity) ~= nil then return false end
-    local record = getMealRecord(npcKey, false)
-    if not record or not record.managed then return false end
-
-    CastleUtils.SetBedWalkState(wuid, "patrolling")
-    CastleUtils.PatrolHeartbeat(wuid)
-    return true
+    return CastleUtils.RequestNpcActivity(entity, "patrol")
 end
 
 function CastleUtils.LogPatrolStatus()
@@ -1389,6 +1736,8 @@ function CastleUtils.ResetBedAssignments()
     CastleUtils.mealBenchOwners = {}
     CastleUtils.mealBenchAssignments = {}
     CastleUtils.mealBenchAttempts = {}
+    CastleUtils.mealTargetMissingSince = {}
+    CastleUtils.activityRuns = {}
     CastleUtils.patrolOwners = {}
     CastleUtils.patrolAssignments = {}
     CastleUtils.patrolHeartbeats = {}
@@ -1892,8 +2241,9 @@ function CastleUtils.GetBedWalkState(npcWuid)
     return CastleUtils.bedWalkStates[tostring(npcWuid)]
 end
 
-function CastleUtils.SetBedWalkState(npcWuid, state)
+function CastleUtils.SetBedWalkState(npcWuid, state, token)
     if npcWuid == nil then return false end
+    if token and not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
     CastleUtils.bedWalkStates[tostring(npcWuid)] = state
     return true
 end

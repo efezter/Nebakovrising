@@ -36,7 +36,7 @@ local function point(name) return "smartObject[" .. name .. "]" end
 
 local meleePatrol = {
     waitMin = 10,
-    waitMax = 20,
+    waitMax = 180,
     fixed = {
         point("profession/guard/guardPoint_normal27_5ba34321-f9c2-45d3-a881-bd6e32b0cd32"),
     },
@@ -66,6 +66,7 @@ local meleePatrol = {
                 point("Idle/leaningSpot_back6_a8610e34-a08e-4456-b4ed-d3d8906a7ae6"),
                 point("watchingUpperPalisade_1_e8e90a9c-d299-4e47-bed3-78a01a0643f4"),
                 point("guardingJail_61004308-937e-495b-8765-1f93285a865c"),
+                point("Bench/bench_2places_low44_10a4df56-b806-47ac-af05-4abcb87c94ea"),
             },
         },
     },
@@ -73,7 +74,7 @@ local meleePatrol = {
 
 local rangedPatrol = {
     waitMin = 10,
-    waitMax = 20,
+    waitMax = 180,
     crossbow = true,
     fixed = {
         point("profession/guard/guardPoint_normal19_dbd8a54b-72fd-43a7-ae51-27a7c7dcb92e"),

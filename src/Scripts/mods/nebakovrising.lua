@@ -14,11 +14,22 @@ nebakovrising.Config = {
     bedBehaviorEnabled = true,
     npcSleepStartHour = 0,
     npcWakeHour = 8,
+    -- Uyanma siralamasi: NPC'ler arasi rastgele gecikme (saniye).
+    wakeStaggerMin = 5,
+    wakeStaggerMax = 10,
     -- eveningMeal=true rollerde bu saatten uyku saatine kadar aksam yemegi tetiklenir.
     eveningMealHour = 20,
     -- Aksam yemegine giden iki NPC arasindaki rastgele gecikme (saniye).
     eveningMealStaggerMin = 10,
     eveningMealStaggerMax = 30,
+    -- System.GetCurrTime ile olculen davranis/koltuk zaman asimlari (saniye).
+    activityRequestTimeout = 10,
+    activityHeartbeatTimeout = 15,
+    activityMoveTimeout = 120,
+    stanceTransitionTimeout = 20,
+    mealSeatTimeout = 30,
+    mealTargetReadyTimeout = 10,
+    mealSeatRetryCooldown = 60,
     guardFaction = "trosecko_settlements_tvrzNebakov_soldiers",
     -- Spawner icin varsayilan NPC ayarlari (kendi GUID'lerini doldur)
     npcDefaults = {
