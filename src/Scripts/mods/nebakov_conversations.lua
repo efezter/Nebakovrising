@@ -121,6 +121,15 @@ function D.CheckActive()
             D.Cancel("player_out_of_range"); return false
         end
     end
+    if active.faceDeadline and not active.arrived and now() >= active.faceDeadline then
+        for _,p in ipairs(active.participants) do
+            log("Donme: NPC=" .. p.name .. ", aci=" .. tostring(p.facingError)
+                .. ", API=" .. tostring(p.turnMethod) .. ", govdeYaw=" .. tostring(p.bodyYaw)
+                .. ", yazilanYaw=" .. tostring(p.requestedYaw) .. ", adim=" .. tostring(p.turnWrites)
+                .. ", hata=" .. tostring(p.turnError))
+        end
+        D.Cancel("facing_timeout");return false
+    end
     if now() >= active.deadline then D.Cancel(active.phase .. "_timeout"); return false end
     return true
 end
@@ -169,6 +178,12 @@ function D.TryStart(manual)
     local firstIndex = math.random(1, #nearby)
     local first = table.remove(nearby, firstIndex)
     local second = nearby[math.random(1, #nearby)]
+    if D.peer.hasCatalog then
+        nebakovrising.Voices.Reconcile()
+        if not nebakovrising.Voices.Get(first:GetName()) or not nebakovrising.Voices.Get(second:GetName()) then
+            return reject("voice_assignment_pending")
+        end
+    end
     bridge().NewSession()
     bridge().bindings = {}
     if not bridge().Register("Marek", first) or not bridge().Register("Hertl", second) then
@@ -225,14 +240,80 @@ function D.Arrived(entity, token)
     local here = position(entity)
     if not anchor or not here or distance(anchor, here) > cfg().arrivalDistance
         or math.abs(anchor.z-here.z) > 1.5 then D.Cancel("arrival_not_confirmed"); return false end
-    p.arrived, D.active.arrived, D.active.phase = true, true, "waiting_audio"
+    p.arrived, D.active.met, D.active.phase = true, true, "waiting_audio"
+    D.active.faceDeadline=now()+(cfg().faceTimeout or 8)
     D.active.deadline = now()+(cfg().generationTimeout or 240)
     bridge().Emit("director_status")
     return true
 end
 
+function D.Partner(entity, token)
+    local p=D.Participant(entity.this.id,token)
+    if not p then return nil end
+    local target=entityFor(D.active.participants[p.mover and 1 or 2])
+    return target and target.this.id
+end
+function D.HasMet(entity, token)
+    return D.ParticipantAlive(entity.this.id,token) and D.active.met==true
+end
+function D.TurnStep(entity, token)
+    local p=D.Participant(entity.this.id,token)
+    if not p or not D.HasMet(entity,token) then return false end
+    local other=entityFor(D.active.participants[p.mover and 1 or 2])
+    local a,b=position(entity),position(other)
+    -- The binding documents the no-argument form as forward. Indexed variants
+    -- differ between engine bindings and are unsuitable for this gate.
+    local ok,f=pcall(entity.GetDirectionVector,entity)
+    if not a or not b or not ok or type(f)~="table" or type(f.x)~="number" or type(f.y)~="number" then return false end
+    local dx,dy=b.x-a.x,b.y-a.y
+    if dx*dx+dy*dy<0.001 or f.x*f.x+f.y*f.y<0.001 then return false end
+    local error=math.atan2(f.x*dy-f.y*dx,f.x*dx+f.y*dy)
+    p.facingError=math.deg(math.abs(error))
+    if p.facingError<=20 then return true end
+    -- Read and write the same body transform. Actor.SetAngles can acknowledge
+    -- a view rotation without changing the transform returned by Entity.GetAngles.
+    local getter,setter,context=entity.GetAngles,entity.SetAngles,entity
+    p.turnMethod="entity.SetAngles"
+    if (type(getter)~="function" or type(setter)~="function") and entity.actor
+        and type(entity.actor.GetAngles)=="function" and type(entity.actor.SetAngles)=="function" then
+        getter,setter,context=entity.actor.GetAngles,entity.actor.SetAngles,entity.actor
+        p.turnMethod="actor.GetAngles/SetAngles"
+    end
+    if type(getter)~="function" or type(setter)~="function" then p.turnError="Body rotation API unavailable";return false end
+    local anglesOk,angles=pcall(getter,context)
+    if not anglesOk or type(angles)~="table" or type(angles.z)~="number" then p.turnError="GetAngles unavailable";return false end
+    p.bodyYaw=angles.z
+    local time=now()
+    local elapsed=math.max(0,math.min(0.25,time-(p.lastTurnTime or time-0.1)))
+    p.lastTurnTime=time
+    local step=math.rad(cfg().turnDegreesPerSecond or 120)*elapsed
+    local change=math.max(-step,math.min(step,error))
+    p.requestedYaw=angles.z+change
+    p.turnWrites=(p.turnWrites or 0)+1
+    local setOk,result=pcall(setter,context,{x=angles.x or 0,y=angles.y or 0,z=angles.z+change})
+    p.turnError=(not setOk or result==false) and tostring(result) or nil
+    return setOk and result~=false
+end
+function D.Faced(entity, token)
+    local p=D.Participant(entity.this.id,token)
+    if not p or not D.HasMet(entity,token) then return false end
+    local other=entityFor(D.active.participants[p.mover and 1 or 2])
+    local a,b=position(entity),position(other)
+    local ok,f=pcall(entity.GetDirectionVector,entity)
+    if not a or not b or not ok or type(f)~="table" or type(f.x)~="number" or type(f.y)~="number" then return false end
+    local dx,dy=b.x-a.x,b.y-a.y
+    local length=math.sqrt(dx*dx+dy*dy)*math.sqrt(f.x*f.x+f.y*f.y)
+    if length>0.001 then p.facingError=math.deg(math.acos(math.max(-1,math.min(1,(dx*f.x+dy*f.y)/length)))) end
+    if length<0.001 or (dx*f.x+dy*f.y)/length<math.cos(math.rad(20)) then return false end
+    p.faced=true
+    if D.active.participants[1].faced and D.active.participants[2].faced then
+        D.active.arrived=true;bridge().Emit("director_status")
+    end
+    return true
+end
+
 local validKinds = {heartbeat_ready=true, heartbeat_busy=true, audio_ready=true,
-    playing=true, finished=true, cancel=true, error=true, line_start=true, line_end=true}
+    playing=true, finished=true, cancel=true, error=true, line_start=true, line_end=true, voice_catalog=true}
 function D.Receive(peer, seq, kind, session, conversation, line, duration)
     -- A non-throwing LoadScript call does not prove a file was executed (it may
     -- return false or reuse a cached script). PollControl observes this counter.
@@ -244,7 +325,10 @@ function D.Receive(peer, seq, kind, session, conversation, line, duration)
     if not D.peer or D.peer.id ~= peer then D.peer = {id=peer, seq=0, lastSeen=now(), ready=false} end
     if seq <= D.peer.seq then return false end
     local accepted = false
-    if kind == "heartbeat_ready" or kind == "heartbeat_busy" then
+    if kind == "voice_catalog" then
+        accepted = nebakovrising.Voices ~= nil and nebakovrising.Voices.Apply(line,duration)
+        if accepted then D.peer.lastSeen=now();D.peer.hasCatalog=true end
+    elseif kind == "heartbeat_ready" or kind == "heartbeat_busy" then
         D.peer.lastSeen, D.peer.ready, accepted = now(), kind=="heartbeat_ready", true
         if D.reason == "python_not_connected" or D.reason == "python_not_ready" then D.reason = nil end
     elseif D.active and D.active.id == conversation then
@@ -285,6 +369,7 @@ function D.Snapshot()
         in_nebakov=D.inRegion==true, arrived=active and active.arrived==true or false,
         audio_ready=active and active.audioReady==true or false, control=D.ack,
         owner=active and active.peer or nil,
+        voice_catalog_required=D.peer and D.peer.hasCatalog==true or false,
         control_io=D.controlIO,
         face=nebakovrising.VoiceFace and nebakovrising.VoiceFace.last,
         reason=D.reason or (D.last and D.last.reason), enabled=D.running==true}

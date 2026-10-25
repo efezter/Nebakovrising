@@ -13,8 +13,9 @@ import uuid
 import math
 
 from nebakov_voice_playback import load_manifest
+from nebakov_voice_samples import valid_name
 
-KINDS = {"heartbeat_ready", "heartbeat_busy", "audio_ready", "playing", "finished", "cancel", "error", "line_start", "line_end"}
+KINDS = {"heartbeat_ready", "heartbeat_busy", "audio_ready", "playing", "finished", "cancel", "error", "line_start", "line_end", "voice_catalog"}
 TOKEN = re.compile(r"[A-Za-z0-9_.:+-]{0,96}\Z")
 ACTIVE_PHASES = {"reserved", "approaching", "waiting_audio", "playing"}
 
@@ -25,6 +26,13 @@ def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
     if any(not isinstance(s, str) or not TOKEN.fullmatch(s) for s in (peer, session, conversation)):
         raise ValueError("Invalid control token")
     extra = ""
+    if kind == "voice_catalog":
+        ids = line.split(",") if isinstance(line, str) else []
+        if not 1 <= len(ids) <= 128 or any(not valid_name(n) for n in ids) or duration not in ids:
+            raise ValueError("Invalid voice catalog")
+        if len({n.lower() for n in ids}) != len(ids):
+            raise ValueError("Duplicate voice sample")
+        extra = ', "%s", "%s"' % (line, duration)
     if kind in {"line_start", "line_end"}:
         if type(line) is not int or not 1 <= line <= 4 or type(duration) is not int or not 0 <= duration <= 100000:
             raise ValueError("Invalid speech line/duration")
@@ -35,7 +43,7 @@ def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
 
 
 class CommandOutbox:
-    def __init__(self, path: Path, emit):
+    def __init__(self, path: Path, emit, catalog=None):
         self.path, self.emit = path, emit
         self.peer = uuid.uuid4().hex
         self.session = None
@@ -45,6 +53,7 @@ class CommandOutbox:
         self.last_heartbeat = -100.0
         self.rejected = None
         self.last_ack = None
+        self.catalog, self.catalog_sent = catalog, False
 
     def observe(self, packet, now):
         if packet["session"] != self.session:
@@ -53,12 +62,15 @@ class CommandOutbox:
             self.queue.clear()
             self.last_heartbeat = -100.0
             self.last_ack = None
+            self.catalog_sent = False
             # Sequence stays monotonic when Lua starts a new conversation session.
         ack = (packet.get("director") or {}).get("control")
         if self.pending and ack and ack["peer"] == self.peer and ack["seq"] == self.pending["seq"]:
             self.last_ack = {**self.pending, "accepted": ack["accepted"]}
             self.emit("control_ack", kind=self.pending["kind"], accepted=ack["accepted"], seq=ack["seq"])
             if not ack["accepted"]:
+                if self.pending["kind"] == "voice_catalog":
+                    raise RuntimeError("Game rejected guard voice catalog")
                 self.rejected = self.pending["conversation"], self.pending["kind"]
             self.pending = None
 
@@ -89,6 +101,9 @@ class CommandOutbox:
         if self.session is None:
             return
         if not self.pending:
+            if self.catalog and not self.catalog_sent:
+                self.queue.appendleft(("voice_catalog", "", ",".join(self.catalog["ids"]), self.catalog["fallback"]))
+                self.catalog_sent = True
             if self.queue:
                 kind, conversation, line, duration = self.queue.popleft()
             elif now - self.last_heartbeat >= 1:

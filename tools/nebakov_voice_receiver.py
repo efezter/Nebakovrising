@@ -105,6 +105,9 @@ def decode_packet(line: bytes) -> dict:
         if not isinstance(npc.get("name"), str):
             raise ValueError("invalid speaker")
         names.append(npc.get("name"))
+        if npc.get("voicesampleid") is not None:
+            from nebakov_voice_samples import valid_name
+            if not valid_name(npc["voicesampleid"]): raise ValueError("invalid NPC voicesampleid")
         if not isinstance(npc.get("entity_name"), str) or len(npc["entity_name"]) > 255:
             raise ValueError("invalid entity name")
         if type(npc.get("available")) is not bool:

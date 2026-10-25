@@ -29,6 +29,9 @@
             <Variable name="mover" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="active" type="_bool" values="true" isPersistent="0" form="single" />
             <Variable name="target" type="vec3" values="" isPersistent="0" form="single" />
+            <Variable name="partner" type="wuid" values="" isPersistent="0" form="single" />
+            <Variable name="met" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="faced" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
         <Parameters><Variable name="activityToken" type="_int" values="0" isPersistent="0" form="single" requirementType="In" /></Parameters>
         <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
@@ -54,6 +57,16 @@
                                 </StanceElement>
                                 <ExecuteLua code="data.active = nebakovrising.Conversations.Arrived(entity, data.activityToken)" />
                             </Sequence></IfCondition>
+                            <While doFail="false" propagateChildFail="false" condition="$met == false"><Sequence>
+                                <ExecuteLua code="data.met = nebakovrising.Conversations.HasMet(entity, data.activityToken)" />
+                                <Wait duration="'100ms'" timeType="GameTime" doFail="false" />
+                            </Sequence></While>
+                            <ExecuteLua code="data.partner = nebakovrising.Conversations.Partner(entity, data.activityToken)" />
+                            <While doFail="false" propagateChildFail="false" condition="$faced == false"><Sequence>
+                                <ExecuteLua code="nebakovrising.Conversations.TurnStep(entity, data.activityToken)" />
+                                <Wait duration="'100ms'" timeType="GameTime" doFail="false" />
+                                <ExecuteLua code="data.faced = nebakovrising.Conversations.Faced(entity, data.activityToken)" />
+                            </Sequence></While>
                             <While doFail="false" propagateChildFail="false" condition="$active"><Sequence>
                                 <Wait duration="'250ms'" timeType="GameTime" doFail="false" />
                                 <ExecuteLua code="data.active = nebakovrising.Conversations.ParticipantAlive(entity.this.id, data.activityToken)" />

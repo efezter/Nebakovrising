@@ -23,7 +23,7 @@ dofile = function(path) error('Fixture has no loose script: ' .. path) end
 nebakovrising.Config.conversations = {
  enabled=true,searchRadius=20,playerExitRadius=30,regionCenter={x=0,y=0,z=0},
  regionRadius=100,regionExitRadius=110,regionHeight=30,randomMinSeconds=30,randomMaxSeconds=60,
- cooldownSeconds=120,npcCooldownSeconds=180,approachDistance=1.8,arrivalDistance=2.8,
+ cooldownSeconds=120,npcCooldownSeconds=180,approachDistance=1.3,arrivalDistance=1.8,
  preparationTimeout=30,approachTimeout=35,conversationTimeout=150,peerTimeout=12,patrolHeartbeatMaxAge=2.5}
 nebakovrising.Config.voiceBridge = {sampleIntervalMs=250}
 nebakovrising.Utils = {GetPlayer=function() return player end, Log=function(s) lines[#lines+1]=s end}
@@ -33,7 +33,9 @@ function makeEntity(name, wuid)
  local entity = makeOriginal(name,wuid)
  entity.pos={x=0,y=0,z=0}; entity.dead=false; entity.combat=false
  function entity:GetWorldPos() return self.pos end
- function entity:GetDirectionVector() return {x=0,y=1,z=0} end
+ function entity:GetDirectionVector() return self.dir or {x=0,y=1,z=0} end
+ function entity:GetAngles() local f=self:GetDirectionVector();return {x=0,y=0,z=math.atan2(-f.x,f.y)} end
+ function entity:SetAngles(a) self.dir={x=-math.sin(a.z),y=math.cos(a.z),z=0} end
  entity.actor={IsDead=function() return entity.dead end, IsUnconscious=function() return false end}
  entity.soul={HasScriptContext=function() return entity.combat end}
  entity.faceStarts={};entity.faceStops={}
@@ -58,6 +60,13 @@ UIAction={RegisterEventSystemListener=function() end}
 player=makeEntity('Henry','player')
 a=diner('guard_a'); a.pos={x=3,y=0,z=0}; ta=begin(a,'patrol')
 b=diner('guard_b'); b.pos={x=9,y=0,z=0}; tb=begin(b,'patrol')
+function turnToward(e,target)
+ local a,b=e:GetWorldPos(),target:GetWorldPos();e.dir={x=b.x-a.x,y=b.y-a.y,z=0}
+end
+function facePair()
+ turnToward(e1,e2);turnToward(e2,e1)
+ assert(D.Faced(e1,p1.token));assert(D.Faced(e2,p2.token))
+end
 """
 
 
@@ -88,6 +97,12 @@ class ConversationDriver(MealBtDriver):
             while self.blocked:
                 yield
             self.entity.pos = self.lua.table(x=data.target.x,y=data.target.y,z=data.target.z)
+            yield
+            return True
+        if node.tag == 'Turn':
+            other=self.lua.globals().XGenAIModule.GetEntityByWUID(data.partner)
+            self.lua.globals().turnToward(self.entity,other)
+            self.events.append(('turn',data.partner))
             yield
             return True
         return (yield from super().node(node,data))
@@ -144,7 +159,111 @@ class LuaDirectorTests(unittest.TestCase):
 
     def test_audio_and_arrival_are_both_required_for_play_authorization(self):
         self.start(); self.prepare()
-        self.lua.execute("assert(not D.Receive('peer',2,'playing',B.session,D.active.id)); assert(D.Receive('peer',3,'audio_ready',B.session,D.active.id)); assert(not D.Receive('peer',4,'playing',B.session,D.active.id)); e2.pos=plan.target; assert(D.Arrived(e2,p2.token)); assert(D.Receive('peer',5,'playing',B.session,D.active.id)); assert(D.Receive('peer',6,'finished',B.session,D.active.id)); assert(D.active==nil)")
+        self.lua.execute("assert(not D.Receive('peer',2,'playing',B.session,D.active.id)); assert(D.Receive('peer',3,'audio_ready',B.session,D.active.id)); assert(not D.Receive('peer',4,'playing',B.session,D.active.id)); e2.pos=plan.target; assert(D.Arrived(e2,p2.token)); assert(not D.active.arrived); facePair(); assert(D.Receive('peer',5,'playing',B.session,D.active.id)); assert(D.Receive('peer',6,'finished',B.session,D.active.id)); assert(D.active==nil)")
+
+    def test_meeting_does_not_allow_speech_until_both_guards_face_each_other(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos=plan.target;assert(D.Arrived(e2,p2.token));assert(not D.active.arrived)
+            e1.dir={x=0,y=0,z=1};assert(not D.Faced(e1,p1.token))
+            turnToward(e1,e2);assert(D.Faced(e1,p1.token));assert(not D.active.arrived)
+            turnToward(e2,e1);assert(D.Faced(e2,p2.token));assert(D.active.arrived)
+        """)
+
+    def test_wake_order_has_one_immediate_guard_then_five_to_fifteen_second_gaps(self):
+        self.lua.execute("assert(D.active==nil)")
+        self.lua.execute("""
+            nebakovrising.Config.wakeStaggerMin=5;nebakovrising.Config.wakeStaggerMax=15
+            C.GetSleepingNpcWuids=function() return {'a','b','c','d','e','f','g','h','i','j'} end
+            C.wakeUpSlotsAssigned=false;C.AssignWakeUpSlots();times={}
+            for _,at in pairs(C.npcWakeSlots) do times[#times+1]=at end
+            table.sort(times);assert(#times==10 and times[1]==clock)
+            for i=2,#times do assert(times[i]-times[i-1]>=5 and times[i]-times[i-1]<=15) end
+        """)
+
+    def test_failed_turn_cancels_without_waiting_for_generation_timeout(self):
+        self.start();self.prepare()
+        self.lua.execute("e2.pos=plan.target;assert(D.Arrived(e2,p2.token));clock=clock+9;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb);assert(not D.CheckActive());assert(D.last.reason=='facing_timeout')")
+
+    def test_smooth_turn_reaches_both_directions_and_only_then_allows_playback(self):
+        self.start();self.prepare()
+        self.lua.execute("e2.pos=plan.target;assert(D.Arrived(e2,p2.token));e1.dir={x=0,y=-1,z=0};e2.dir={x=0,y=-1,z=0}")
+        self.lua.execute("""
+            for i=1,30 do
+                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
+                D.TurnStep(e1,p1.token);D.TurnStep(e2,p2.token)
+                D.Faced(e1,p1.token);D.Faced(e2,p2.token)
+            end
+            assert(D.active.arrived and D.active.participants[1].facingError<=20
+                and D.active.participants[2].facingError<=20)
+        """)
+
+    def test_smooth_turn_uses_body_transform_even_when_actor_setter_silently_does_nothing(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos=plan.target;assert(D.Arrived(e2,p2.token));e1.dir={x=0,y=-1,z=0}
+            actorWrites=0;e1.actor.SetAngles=function(_,angles) actorWrites=actorWrites+1 end
+            for i=1,20 do
+                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
+                D.TurnStep(e1,p1.token)
+            end
+            assert(D.Faced(e1,p1.token));assert(p1.turnMethod=='entity.SetAngles' and actorWrites==0)
+            e1.actor.SetAngles=nil;e1.SetAngles=nil;e1.dir={x=0,y=-1,z=0}
+            assert(not D.TurnStep(e1,p1.token));assert(p1.turnError=='Body rotation API unavailable')
+        """)
+
+    def test_turn_and_facing_gate_use_documented_no_argument_forward_vector(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos=plan.target;assert(D.Arrived(e2,p2.token))
+            local old=e1.GetDirectionVector
+            e1.GetDirectionVector=function(self,axis)
+                if axis~=nil then error('Indexed vector is not the forward binding') end
+                return old(self)
+            end
+            for i=1,20 do
+                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
+                D.TurnStep(e1,p1.token)
+            end
+            assert(D.Faced(e1,p1.token))
+        """)
+
+    def test_actor_fallback_reads_and_writes_actor_angles_as_a_pair(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos=plan.target;assert(D.Arrived(e2,p2.token))
+            local get,set=e1.GetAngles,e1.SetAngles
+            e1.actor.GetAngles=function() return get(e1) end
+            e1.actor.SetAngles=function(_,angles) return set(e1,angles) end
+            e1.GetAngles=nil;e1.SetAngles=nil
+            for i=1,20 do
+                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
+                D.TurnStep(e1,p1.token)
+            end
+            assert(D.Faced(e1,p1.token));assert(p1.turnMethod=='actor.GetAngles/SetAngles')
+        """)
+
+    def test_wake_slots_use_runtime_wuid_and_reset_every_night(self):
+        self.lua.execute("""
+            nebakovrising.Config.npcSleepStartHour=0;nebakovrising.Config.npcWakeHour=8
+            nebakovrising.Config.wakeStaggerMin=5;nebakovrising.Config.wakeStaggerMax=15
+            g1=makeEntity('nebakovrising_guard_one','wuid_one')
+            g2=makeEntity('nebakovrising_guard_two','wuid_two')
+            cook=makeEntity('nebakovrising_cook','wuid_cook')
+            C.activityRuns.wuid_one={kind='sleep'};C.activityRuns.wuid_two={kind='sleep'}
+            C.activityRuns.wuid_cook={kind='sleep'}
+            System.GetEntitiesByClass=function(class) if class=='NPC' then return {g1,g2,cook} else return {store} end end
+            nebakovrising.Roles.Resolve=function(name) return {bedPool=name=='nebakovrising_cook' and 'servant' or 'guard'} end
+            worldHour=8;C.AssignWakeUpSlots()
+            assert(C.npcWakeSlots[g1.id]==nil and C.npcWakeSlots.wuid_cook==nil)
+            assert(C.npcWakeSlots.wuid_one and C.npcWakeSlots.wuid_two)
+            later=C.npcWakeSlots.wuid_one>clock and 'wuid_one' or 'wuid_two'
+            assert(C.IsNpcSleepTime(later))
+            clock=clock+30;assert(not C.IsNpcSleepTime(later))
+            worldHour=1;assert(C.IsNpcSleepTime(later));assert(not C.wakeUpSlotsAssigned)
+            worldHour=8;C.AssignWakeUpSlots();assert(C.npcWakeSlots[later]>=clock)
+            assert(math.max(C.npcWakeSlots.wuid_one,C.npcWakeSlots.wuid_two)>clock)
+        """)
 
     def test_old_peer_session_sequence_and_conversation_cannot_control_new_work(self):
         self.start()
@@ -199,8 +318,11 @@ class LuaDirectorTests(unittest.TestCase):
         g=self.lua.globals()
         anchor=ConversationDriver(self.lua,g.System.GetEntity(g.p1.entityId),g.p1.token)
         mover=ConversationDriver(self.lua,g.System.GetEntity(g.p2.entityId),g.p2.token)
-        for _ in range(14):
-            self.keep_alive();anchor.tick();mover.tick()
+        # Rotation is updated at 100 ms; the meal driver's coarse 500 ms steps
+        # per entity artificially stretch the two concurrent turn loops.
+        for _ in range(120):
+            self.lua.execute('clock=clock+0.1')
+            self.keep_alive();next(anchor.generator);next(mover.generator)
             if self.lua.eval('D.active.arrived == true'):break
         self.assertTrue(self.lua.eval('D.active.arrived == true'))
         self.assertFalse(any(e[0]=='move' for e in anchor.events))
@@ -358,7 +480,7 @@ class EndToEndTests(unittest.TestCase):
                     self.lua.execute('p1=D.active.participants[1];p2=D.active.participants[2];e1=System.GetEntity(p1.entityId);e2=System.GetEntity(p2.entityId);D.Prepare(e1,p1.token);plan=D.Prepare(e2,p2.token)')
                     prepared=True;start_step=step
                 if selected and step-start_step == 12:
-                    self.lua.execute('e2.pos=plan.target; assert(D.Arrived(e2,p2.token))')
+                    self.lua.execute('e2.pos=plan.target; assert(D.Arrived(e2,p2.token)); facePair()')
                 self.lua.execute('D.Tick({generation=D.generation})')
                 p=self.packet();previous_count=len(audio.played)
                 controller.ingest(p,step*.25);controller.tick(step*.25)

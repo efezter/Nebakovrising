@@ -1,5 +1,7 @@
 # Patrol sohbetleri — kurulum ve oyun testi
 
+Güncel aşama: [dinamik guard ses havuzu, kalıcı atamalar ve karşılıklı dönme](nebakov-guard-voices.md).
+
 ## Yeni üretim ve ağız animasyonu testi
 
 TTS servisi açıkken `D:\NebakovVoice\server\start_patrol_conversations.cmd` çalıştırılır. Bu mod, yeni dört repliki mevcut `conversation_engine.generate_conversation` ile üretir ve mevcut `render_with_chatterbox` fonksiyonu üzerinden servise gönderir. Motor/TTS kodu değiştirilmez. Çıktılar yine `D:\NebakovVoice\output\conversations` altında tutulur.

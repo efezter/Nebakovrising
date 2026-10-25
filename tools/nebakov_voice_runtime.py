@@ -223,7 +223,10 @@ class Worker:
         if not self.ready or self.busy:
             return None
         job = uuid.uuid4().hex
-        self.commands.put_nowait({"id": job, "session": packet["session"], "context": build_context(packet)})
+        samples = {n["name"]: n["voicesampleid"] for n in packet.get("npcs", []) if n.get("voicesampleid")}
+        if packet.get("director") and packet["director"].get("voice_catalog_required") and len(samples) != 2:
+            raise ValueError("Both guards need a persisted voicesampleid")
+        self.commands.put_nowait({"id": job, "session": packet["session"], "context": build_context(packet), "voicesampleid": samples})
         self.busy, self.started = job, time.monotonic()
         self.emit("generation_started", job=job, session=packet["session"], seq=packet["seq"])
         return job
@@ -325,7 +328,11 @@ def run(args, config, preset):
             if not preset:
                 worker = Worker(args.engine_dir, emit, args.worker_timeout)
             if args.director:
-                outbox = CommandOutbox(args.command_file, emit)
+                from nebakov_voice_samples import discover
+                catalog = discover(args.voices_dir) if not preset else None
+                if catalog:
+                    emit("voice_catalog", samples=catalog["ids"], fallback=catalog["fallback"], rejected=catalog["rejected"])
+                outbox = CommandOutbox(args.command_file, emit, catalog)
                 controller = PatrolController(config, playback, worker.submit if worker else lambda p: None,
                     emit, outbox, lambda: worker is None or (worker.ready and worker.busy is None), preset)
                 print("READY: patrol director mode. In KCD2: nebakov_conversation_start; "
@@ -391,6 +398,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--engine-dir", type=Path, default=Path(r"D:\NebakovVoice\server"))
     parser.add_argument("--manifest", help="Existing conversation.json or 'latest'; never calls Gemini/TTS")
+    parser.add_argument("--voices-dir", type=Path, default=Path(r"D:\NebakovVoice\tts\voices"))
     parser.add_argument("--manual", action="store_true", help="Only nebakov_voice_talk requests; retain proximity/cooldown")
     parser.add_argument("--check", action="store_true", help="Check mixer and warm the TTS worker; never generates or plays speech")
     parser.add_argument("--once", action="store_true", help="Exit after one conversation has actually finished")

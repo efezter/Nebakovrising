@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+import sys
+import wave
 
 from nebakov_voice_runtime import latest_manifest
 from nebakov_voice_playback import load_manifest
@@ -19,10 +21,20 @@ def main():
     server=Path(r'D:\NebakovVoice\server')
     fixture=LuaDirectorTests();fixture.setUp()
     lua=fixture.lua;lua.execute('D.peer=nil')
-    manifest=latest_manifest();lines=load_manifest(manifest)
-    hashes={line.path:hashlib.sha256(line.path.read_bytes()).hexdigest() for line in lines}
     with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as temp:
         folder=Path(temp);game_log=folder/'game.log';console=folder/'console.log';command=folder/'command.lua'
+        if '--fixture' in sys.argv:
+            rows=[]
+            for i in range(1,5):
+                name=f'{i}.wav'
+                with wave.open(str(folder/name),'wb') as f:
+                    f.setparams((1,2,24000,0,'NONE','not compressed'));f.writeframes(b'\0\0'*4800)
+                rows.append({'index':i,'speaker':'Marek' if i%2 else 'Hertl','audio_file':name})
+            manifest=folder/'conversation.json';manifest.write_text(json.dumps({'lines':rows}))
+        else:
+            manifest=latest_manifest()
+        lines=load_manifest(manifest)
+        hashes={line.path:hashlib.sha256(line.path.read_bytes()).hexdigest() for line in lines}
         def read_control(path):
             if path != 'Data/Scripts/nebakov_voice/command.lua':raise FileNotFoundError(path)
             return command.read_text('ascii')
@@ -78,7 +90,7 @@ def main():
             assert lua.eval("nebakovrising.VoiceFace.current==nil and #a.faceStarts+#b.faceStarts==4")
             assert len([e for e in events if e['event']=='control_ack' and e['kind']=='line_start' and e['accepted']])==4
             for path,digest in hashes.items():assert hashlib.sha256(path.read_bytes()).hexdigest()==digest
-            print('PASS: project patrol runtime + actual Lua command/ACK + BT stand/approach gates + four real WAVs on dummy audio; no premature playback.')
+            print('PASS: project runtime + Lua command/ACK + BT stand/approach/turn gates + four WAVs on dummy audio; no premature playback. Fixture audio='+str('--fixture' in sys.argv))
             print('Game APIs/navigation were mocked; in-game approach/control-channel validation remains required.')
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=5)

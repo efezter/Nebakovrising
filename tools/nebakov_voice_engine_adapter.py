@@ -51,6 +51,8 @@ def worker_main(commands, results, engine_dir: str):
                 filename = ("chatterbox/" if service else "") + f"{index:02d}_{speaker.lower()}.wav"
                 manifest_lines.append({"index": index, "speaker": speaker, "text": text,
                                        "audio_file": filename})
+                if job.get("voicesampleid", {}).get(speaker):
+                    manifest_lines[-1]["voicesampleid"] = job["voicesampleid"][speaker]
                 if not service:
                     voice_id = engine.NPCS[speaker]["voice_id"]
                     elapsed = engine.generate_audio(tts, text, folder / filename, voice_id)
@@ -63,8 +65,16 @@ def worker_main(commands, results, engine_dir: str):
             manifest = folder / "conversation.json"
             temporary.replace(manifest)
             if service:
-                # The unchanged service reads conversation.json and writes its WAVs.
-                engine.render_with_chatterbox(folder)
+                samples = job.get("voicesampleid")
+                if samples:
+                    body = {"conversation_folder":folder.name, "voicesampleid":samples}
+                    if os.environ.get("NEBAKOV_TTS_MODEL"): body["model"]=os.environ["NEBAKOV_TTS_MODEL"]
+                    request = urllib.request.Request("http://127.0.0.1:8765/render", data=json.dumps(body).encode(),
+                        headers={"Content-Type":"application/json"}, method="POST")
+                    with urllib.request.urlopen(request,timeout=600) as response:
+                        if json.load(response).get("status")!="ok": raise RuntimeError("TTS service rendering failed")
+                else:
+                    engine.render_with_chatterbox(folder)
             from nebakov_voice_playback import load_manifest
             load_manifest(manifest)  # Never publish a missing/partial audio result.
             results.put({"kind": "result", "id": job["id"], "manifest": str(manifest)})

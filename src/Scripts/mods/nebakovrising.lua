@@ -16,7 +16,7 @@ nebakovrising.Config = {
     npcWakeHour = 8,
     -- Uyanma siralamasi: NPC'ler arasi rastgele gecikme (saniye).
     wakeStaggerMin = 5,
-    wakeStaggerMax = 10,
+    wakeStaggerMax = 15,
     -- eveningMeal=true rollerde bu saatten uyku saatine kadar aksam yemegi tetiklenir.
     eveningMealHour = 20,
     -- Aksam yemegine giden iki NPC arasindaki rastgele gecikme (saniye).
@@ -39,7 +39,9 @@ nebakovrising.Config = {
         regionRadius = 250, regionExitRadius = 280, regionHeight = 80,
         randomMinSeconds = 30, randomMaxSeconds = 60,
         cooldownSeconds = 120, npcCooldownSeconds = 180,
-        approachDistance = 1.8, arrivalDistance = 2.8,
+        approachDistance = 1.3, arrivalDistance = 1.8,
+        faceTimeout = 8,
+        turnDegreesPerSecond = 120,
         preparationTimeout = 30, approachTimeout = 35, conversationTimeout = 150,
         generationTimeout = 240,
         peerTimeout = 12, patrolHeartbeatMaxAge = 2.5,
@@ -78,6 +80,7 @@ function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/Spawner.lua")
     Script.ReloadScript("Scripts/mods/CastleUtils.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_bridge.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_voice_registry.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_face.lua")
     Script.ReloadScript("Scripts/mods/nebakov_conversations.lua")
 end
@@ -127,6 +130,7 @@ function Main.OnEntitySpawned(entity, name)
     elseif nebakovrising.CastleUtils and nebakovrising.CastleUtils.SaveManagedNpc then
         nebakovrising.CastleUtils.SaveManagedNpc(name, nil, false)
     end
+    if nebakovrising.Voices then nebakovrising.Voices.Reconcile() end
     nebakovrising.Utils.Log("Spawn edildi: " .. tostring(name) .. " (toplam: " .. nebakovrising.Spawner.GetSpawnedCount() .. ")")
     local bedName
     if assignedBed and assignedBed.GetName then

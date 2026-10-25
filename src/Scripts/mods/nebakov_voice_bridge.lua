@@ -112,6 +112,7 @@ function Bridge.Snapshot(event)
         local position, reason = Bridge.GetPosition(name)
         local binding = Bridge.bindings[name]
         npcs[#npcs + 1] = { name = name, entity_name = binding and binding.entityName or "",
+            voicesampleid = binding and nebakovrising.Voices and nebakovrising.Voices.Get(binding.entityName),
             available = position ~= nil, position = position, reason = reason }
     end
     local ok, player = pcall(function() return nebakovrising.Utils.GetPlayer() end)

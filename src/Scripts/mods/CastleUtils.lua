@@ -221,6 +221,17 @@ function CastleUtils.SaveManagedNpc(entityName, bedSelector, preserveEquipment)
     return true
 end
 
+function CastleUtils.VoiceStore(create)
+    local records=getPersistentRecords(create)
+    local store=records and findPersistentStore()
+    if not store then return nil end
+    if type(store.health.nebakovVoiceCatalog)~="table" then
+        if not create then return records end
+        store.health.nebakovVoiceCatalog={}
+    end
+    return records,store.health.nebakovVoiceCatalog
+end
+
 function CastleUtils.GetManagedNpcRole(entityName)
     local records = getPersistentRecords(false)
     local record = records and records[entityName]
@@ -228,6 +239,7 @@ function CastleUtils.GetManagedNpcRole(entityName)
 end
 
 function CastleUtils.SnapshotManagedNpcPositions()
+    if nebakovrising.Voices then nebakovrising.Voices.Reconcile() end
     if CastleUtils._restoreInProgress then
         Script.SetTimerForFunction(
             2000,
@@ -449,7 +461,17 @@ function CastleUtils.GetSleepingNpcWuids()
     for _, npc in pairs(System.GetEntitiesByClass("NPC") or {}) do
         local name = npc.GetName and npc:GetName()
         if name and string.sub(name, 1, 14) == "nebakovrising_" then
-            table.insert(result, npc.id)
+            local role=nebakovrising.Roles.Resolve(name)
+            local wuid=npc.this and npc.this.id
+            local run=wuid and CastleUtils.activityRuns[tostring(wuid)]
+            local dead=false
+            if npc.actor and type(npc.actor.IsDead)=="function" then
+                local ok,value=pcall(npc.actor.IsDead,npc.actor);dead=ok and value==true
+            end
+            if wuid and role and role.bedPool=="guard" and not dead
+                and ((run and run.kind=="sleep") or (not run and CastleUtils.GetBedAssignment(wuid))) then
+                table.insert(result, wuid)
+            end
         end
     end
     return result
@@ -458,13 +480,12 @@ end
 -- Uyanma sirasini rastgele atar (bir kez cagrilir, idempotent)
 function CastleUtils.AssignWakeUpSlots()
     if CastleUtils.wakeUpSlotsAssigned then return end
-    CastleUtils.wakeUpSlotsAssigned = true
-
     local sleeping = CastleUtils.GetSleepingNpcWuids()
     if #sleeping == 0 then
         log("[nebakovrising] Uyanma sirasi: yatan NPC bulunamadi.")
         return
     end
+    CastleUtils.wakeUpSlotsAssigned = true
 
     -- Fisher-Yates shuffle → rastgele siralama
     for i = #sleeping, 2, -1 do
@@ -474,7 +495,7 @@ function CastleUtils.AssignWakeUpSlots()
 
     local cfg = nebakovrising.Config
     local minGap = cfg and cfg.wakeStaggerMin or 5
-    local maxGap = cfg and cfg.wakeStaggerMax or 10
+    local maxGap = cfg and cfg.wakeStaggerMax or 15
     local now = System.GetCurrTime()
     local cursor = now
 
@@ -529,6 +550,10 @@ function CastleUtils.IsNpcSleepTime(npcWuid)
     end
 
     if inSleepWindow then
+        if CastleUtils.wakeUpSlotsAssigned then
+            CastleUtils.npcWakeSlots={}
+            CastleUtils.wakeUpSlotsAssigned=false
+        end
         return true, hour
     end
 
@@ -2526,6 +2551,7 @@ function CastleUtils.AssignPlayerChest()
 end
 
 function CastleUtils.OnGameplayStarted()
+    if nebakovrising.Voices then nebakovrising.Voices.Reset() end
     if System.GetEntityIdByName("trosecko") then
         for _, entityName in ipairs(CastleUtils.removeEnts) do
             local entityId = System.GetEntityIdByName(entityName)
