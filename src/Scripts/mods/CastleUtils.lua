@@ -1107,6 +1107,7 @@ end
 
 function CastleUtils.FinishNpcActivity(npcWuid, token)
     if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
+    if nebakovrising.Conversations then nebakovrising.Conversations.ActivityEnded(npcWuid, token) end
     CastleUtils.activityRuns[tostring(npcWuid)] = nil
     CastleUtils.SetBedWalkState(npcWuid, "idle")
     return true
@@ -1116,9 +1117,10 @@ function CastleUtils.FailNpcActivity(entity, token)
     if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
     local run = CastleUtils.activityRuns[tostring(entity.this.id)]
     local assignment = CastleUtils.patrolAssignments[run.npcKey]
-    if run.kind == "patrol" and assignment then
+    if run.kind == "patrol" and assignment and not run.conversationId then
         CastleUtils.patrolBlocked[assignment.selector] = System.GetCurrTime() + 120
     end
+    if nebakovrising.Conversations then nebakovrising.Conversations.ActivityEnded(entity.this.id, token) end
     -- Keep reservations until the next BT has physically stood up.
     log("Davranis kesildi: NPC=" .. run.npcKey .. ", tur=" .. run.kind
         .. ", asama=" .. tostring(run.phase) .. ", token=" .. token)

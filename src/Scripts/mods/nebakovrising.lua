@@ -30,6 +30,21 @@ nebakovrising.Config = {
     mealSeatTimeout = 30,
     mealTargetReadyTimeout = 10,
     mealSeatRetryCooldown = 60,
+    -- Milestone 1: outbound position telemetry only; generation/playback stay external.
+    voiceBridge = { sampleIntervalMs = 250 },
+    conversations = {
+        enabled = true, randomEnabled = false, searchRadius = 20, playerExitRadius = 30,
+        -- Gate position observed in live telemetry; adjustable castle region.
+        regionCenter = { x = 1895, y = 1213, z = 52 },
+        regionRadius = 250, regionExitRadius = 280, regionHeight = 80,
+        randomMinSeconds = 30, randomMaxSeconds = 60,
+        cooldownSeconds = 120, npcCooldownSeconds = 180,
+        approachDistance = 1.8, arrivalDistance = 2.8,
+        preparationTimeout = 30, approachTimeout = 35, conversationTimeout = 150,
+        generationTimeout = 240,
+        peerTimeout = 12, patrolHeartbeatMaxAge = 2.5,
+        face = {enabled=true, clip="fa_cin_talk_neutral_01", layer=12},
+    },
     guardFaction = "trosecko_settlements_tvrzNebakov_soldiers",
     -- Spawner icin varsayilan NPC ayarlari (kendi GUID'lerini doldur)
     npcDefaults = {
@@ -62,6 +77,9 @@ function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/NpcInteraction.lua")
     Script.ReloadScript("Scripts/mods/Spawner.lua")
     Script.ReloadScript("Scripts/mods/CastleUtils.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_voice_bridge.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_voice_face.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_conversations.lua")
 end
 
 -- Konsol komutlari: oyun icinde ~ ile ac, ornegin:  nebakovrising_status

@@ -76,6 +76,15 @@
                 <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol_stop">
                     <TreeLocation FileName="nebakovrising_meal.xml" TreeName="nebakovrising_patrol_stop" />
                 </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_conversation_request">
+                    <TreeLocation FileName="nebakovrising_conversation.xml" TreeName="nebakovrising_conversation_request" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_conversation_cancel">
+                    <TreeLocation FileName="nebakovrising_conversation.xml" TreeName="nebakovrising_conversation_cancel" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol_conversation">
+                    <TreeLocation FileName="nebakovrising_conversation.xml" TreeName="nebakovrising_patrol_conversation" />
+                </SmartBehaviorTemplate>
             </BehaviorTemplates>
         </SmartEntityTemplate>
     </SmartEntitys>

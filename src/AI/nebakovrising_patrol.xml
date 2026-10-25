@@ -42,6 +42,7 @@
                                     " />
                                     <Parallel successMode="Any" failureMode="Any">
                                         <Function_nebakovrising_patrol_stop activityToken="$activityToken" nodeLabel="91000007" />
+                                        <Function_nebakovrising_conversation_request activityToken="$activityToken" nodeLabel="92000003" />
                                         <While doFail="false" propagateChildFail="true" condition="$patrolActive">
                                             <Sequence>
                                                 <ExecuteLua code="&#10;
@@ -277,6 +278,7 @@
                                             </Sequence>
                                         </While>
                                     </Parallel>
+                                    <Function_nebakovrising_patrol_conversation activityToken="$activityToken" nodeLabel="92000004" />
                                     <Function_nebakovrising_stand activityToken="$activityToken" nodeLabel="91000012" />
                                     <ExecuteLua code="&#10;
                                         nebakovrising.CastleUtils.ReleasePatrolAfterStanding(entity.this.id, data.activityToken)&#10;
