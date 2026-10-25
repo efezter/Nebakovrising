@@ -41,7 +41,7 @@ nebakovrising.Config = {
         cooldownSeconds = 120, npcCooldownSeconds = 180,
         approachDistance = 1.3, arrivalDistance = 1.8,
         faceTimeout = 8,
-        turnDegreesPerSecond = 120,
+        arrivalSettleSeconds = 2,
         preparationTimeout = 30, approachTimeout = 35, conversationTimeout = 150,
         generationTimeout = 240,
         peerTimeout = 12, patrolHeartbeatMaxAge = 2.5,

@@ -71,10 +71,11 @@ end
 
 
 class ConversationDriver(MealBtDriver):
-    def __init__(self, lua, entity, token, blocked=False):
+    def __init__(self, lua, entity, token, blocked=False, blocked_turn=False):
         super().__init__(lua, ROOT/'src/AI/nebakovrising_meal.xml', entity, token)
         self.functions.update({t.get('name'): t for t in ET.parse(ROOT/'src/AI/nebakovrising_conversation.xml').getroot()})
         self.blocked = blocked
+        self.blocked_turn = blocked_turn
         self.generator = self.function('nebakovrising_patrol_conversation', token)
 
     def function(self, name, token):
@@ -100,6 +101,9 @@ class ConversationDriver(MealBtDriver):
             yield
             return True
         if node.tag == 'Turn':
+            self.events.append(('turn_started',data.partner))
+            while self.blocked_turn:
+                yield
             other=self.lua.globals().XGenAIModule.GetEntityByWUID(data.partner)
             self.lua.globals().turnToward(self.entity,other)
             self.events.append(('turn',data.partner))
@@ -170,6 +174,31 @@ class LuaDirectorTests(unittest.TestCase):
             turnToward(e2,e1);assert(D.Faced(e2,p2.token));assert(D.active.arrived)
         """)
 
+    def test_move_completion_waits_for_braking_frame_before_confirming_arrival(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos={x=e1.pos.x+1.889,y=e1.pos.y,z=e1.pos.z+0.127}
+            assert(D.Arrived(e2,p2.token));assert(D.active and not D.active.met)
+            pending=timers[#timers].data
+            assert(not D.Receive('peer',2,'playing',B.session,D.active.id))
+            clock=clock+0.25;e2.pos={x=e1.pos.x+1.64,y=e1.pos.y,z=e1.pos.z+0.115}
+            assert(D.ConfirmArrival(pending));assert(D.active.met and not D.active.arrived)
+        """)
+
+    def test_arrival_settle_expiry_cancels_and_old_callback_cannot_change_new_scene(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos={x=e1.pos.x+1.9,y=e1.pos.y,z=e1.pos.z}
+            assert(D.Arrived(e2,p2.token));pending=timers[#timers].data
+            D.ConfirmArrival({generation=D.generation,id='old',token=p2.token})
+            assert(D.active and not D.active.met)
+            D.ConfirmArrival({generation=D.generation-1,id=D.active.id,token=p2.token})
+            assert(D.active and not D.active.met)
+            clock=clock+2.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
+            assert(not D.ConfirmArrival(pending));assert(D.active==nil and D.last.reason=='arrival_not_confirmed')
+            assert(not D.ConfirmArrival(pending))
+        """)
+
     def test_wake_order_has_one_immediate_guard_then_five_to_fifteen_second_gaps(self):
         self.lua.execute("assert(D.active==nil)")
         self.lua.execute("""
@@ -185,63 +214,47 @@ class LuaDirectorTests(unittest.TestCase):
         self.start();self.prepare()
         self.lua.execute("e2.pos=plan.target;assert(D.Arrived(e2,p2.token));clock=clock+9;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb);assert(not D.CheckActive());assert(D.last.reason=='facing_timeout')")
 
-    def test_smooth_turn_reaches_both_directions_and_only_then_allows_playback(self):
-        self.start();self.prepare()
-        self.lua.execute("e2.pos=plan.target;assert(D.Arrived(e2,p2.token));e1.dir={x=0,y=-1,z=0};e2.dir={x=0,y=-1,z=0}")
-        self.lua.execute("""
-            for i=1,30 do
-                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
-                D.TurnStep(e1,p1.token);D.TurnStep(e2,p2.token)
-                D.Faced(e1,p1.token);D.Faced(e2,p2.token)
-            end
-            assert(D.active.arrived and D.active.participants[1].facingError<=20
-                and D.active.participants[2].facingError<=20)
-        """)
+    def test_native_turn_contract_uses_scalar_wuid_and_standing_animation_context(self):
+        root=ET.parse(ROOT/'src/AI/nebakovrising_conversation.xml').getroot()
+        tree=next(t for t in root if t.get('name')=='nebakovrising_patrol_conversation')
+        self.assertEqual(tree.find("Variables/Variable[@name='partner']").get('type'),'_wuid')
+        self.assertIsNotNone(tree.find(".//StanceElement[@stance='standing']/Turn[@target='$partner']"))
+        self.assertEqual(tree.find('.//Move').get('changeNPCState'),'false')
+        self.assertNotIn('SetAngles',(ROOT/'src/Scripts/mods/nebakov_conversations.lua').read_text())
 
-    def test_smooth_turn_uses_body_transform_even_when_actor_setter_silently_does_nothing(self):
+    def test_facing_gate_uses_documented_no_argument_forward_vector(self):
         self.start();self.prepare()
         self.lua.execute("""
-            e2.pos=plan.target;assert(D.Arrived(e2,p2.token));e1.dir={x=0,y=-1,z=0}
-            actorWrites=0;e1.actor.SetAngles=function(_,angles) actorWrites=actorWrites+1 end
-            for i=1,20 do
-                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
-                D.TurnStep(e1,p1.token)
-            end
-            assert(D.Faced(e1,p1.token));assert(p1.turnMethod=='entity.SetAngles' and actorWrites==0)
-            e1.actor.SetAngles=nil;e1.SetAngles=nil;e1.dir={x=0,y=-1,z=0}
-            assert(not D.TurnStep(e1,p1.token));assert(p1.turnError=='Body rotation API unavailable')
-        """)
-
-    def test_turn_and_facing_gate_use_documented_no_argument_forward_vector(self):
-        self.start();self.prepare()
-        self.lua.execute("""
-            e2.pos=plan.target;assert(D.Arrived(e2,p2.token))
+            e2.pos=plan.target;assert(D.Arrived(e2,p2.token));turnToward(e1,e2)
             local old=e1.GetDirectionVector
             e1.GetDirectionVector=function(self,axis)
                 if axis~=nil then error('Indexed vector is not the forward binding') end
                 return old(self)
             end
-            for i=1,20 do
-                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
-                D.TurnStep(e1,p1.token)
-            end
-            assert(D.Faced(e1,p1.token))
+            assert(D.TurnStarted(e1,p1.token));assert(D.Faced(e1,p1.token))
+            assert(p1.turnMethod=='BT.Turn' and p1.nativeTurnComplete)
         """)
 
-    def test_actor_fallback_reads_and_writes_actor_angles_as_a_pair(self):
-        self.start();self.prepare()
-        self.lua.execute("""
-            e2.pos=plan.target;assert(D.Arrived(e2,p2.token))
-            local get,set=e1.GetAngles,e1.SetAngles
-            e1.actor.GetAngles=function() return get(e1) end
-            e1.actor.SetAngles=function(_,angles) return set(e1,angles) end
-            e1.GetAngles=nil;e1.SetAngles=nil
-            for i=1,20 do
-                clock=clock+0.1;C.ActivityHeartbeat(a.this.id,ta);C.ActivityHeartbeat(b.this.id,tb)
-                D.TurnStep(e1,p1.token)
-            end
-            assert(D.Faced(e1,p1.token));assert(p1.turnMethod=='actor.GetAngles/SetAngles')
-        """)
+    def test_native_animation_completion_gates_audio_without_direct_transform_writes(self):
+        self.start();g=self.lua.globals()
+        self.lua.execute("p1=D.active.participants[1];p2=D.active.participants[2];function forbidAngles() error('No direct rotation') end;a.SetAngles=forbidAngles;b.SetAngles=forbidAngles;a.actor.SetAngles=forbidAngles;b.actor.SetAngles=forbidAngles")
+        anchor=ConversationDriver(self.lua,g.System.GetEntity(g.p1.entityId),g.p1.token)
+        mover=ConversationDriver(self.lua,g.System.GetEntity(g.p2.entityId),g.p2.token,blocked_turn=True)
+        def tick():
+            self.lua.execute('clock=clock+0.1');self.keep_alive()
+            next(anchor.generator);next(mover.generator)
+        for _ in range(70):
+            tick()
+            if any(e[0]=='turn_started' for e in mover.events):break
+        self.assertTrue(any(e[0]=='turn_started' for e in mover.events))
+        self.lua.execute("assert(not D.active.arrived);assert(D.Receive('peer',D.peer.seq+1,'audio_ready',B.session,D.active.id));assert(not D.Receive('peer',D.peer.seq+1,'playing',B.session,D.active.id))")
+        mover.blocked_turn=False
+        for _ in range(70):
+            tick()
+            if self.lua.eval('D.active.arrived==true'):break
+        self.assertTrue(self.lua.eval('D.active.arrived==true'))
+        self.assertEqual(len([e for e in anchor.events if e[0]=='turn']),1)
+        self.assertEqual(len([e for e in mover.events if e[0]=='turn']),1)
 
     def test_wake_slots_use_runtime_wuid_and_reset_every_night(self):
         self.lua.execute("""

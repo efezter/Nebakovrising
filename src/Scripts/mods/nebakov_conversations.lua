@@ -124,9 +124,8 @@ function D.CheckActive()
     if active.faceDeadline and not active.arrived and now() >= active.faceDeadline then
         for _,p in ipairs(active.participants) do
             log("Donme: NPC=" .. p.name .. ", aci=" .. tostring(p.facingError)
-                .. ", API=" .. tostring(p.turnMethod) .. ", govdeYaw=" .. tostring(p.bodyYaw)
-                .. ", yazilanYaw=" .. tostring(p.requestedYaw) .. ", adim=" .. tostring(p.turnWrites)
-                .. ", hata=" .. tostring(p.turnError))
+                .. ", API=" .. tostring(p.turnMethod) .. ", hedef=" .. tostring(p.turnTarget)
+                .. ", nativeTamam=" .. tostring(p.nativeTurnComplete))
         end
         D.Cancel("facing_timeout");return false
     end
@@ -233,18 +232,46 @@ function D.AnchorReady(npcWuid, token)
     return p ~= nil and D.active.participants[1].prepared == true
 end
 
-function D.Arrived(entity, token)
-    local p = D.Participant(entity.this.id, token)
-    if not p or not D.CheckActive() then return false end
-    local anchor = position(entityFor(D.active.participants[1]))
-    local here = position(entity)
-    if not anchor or not here or distance(anchor, here) > cfg().arrivalDistance
-        or math.abs(anchor.z-here.z) > 1.5 then D.Cancel("arrival_not_confirmed"); return false end
-    p.arrived, D.active.met, D.active.phase = true, true, "waiting_audio"
-    D.active.faceDeadline=now()+(cfg().faceTimeout or 8)
-    D.active.deadline = now()+(cfg().generationTimeout or 240)
+-- Native Move can report success before its last braking/root-motion frame.
+-- Keep both reservations while checking the actual distance asynchronously.
+function D.ConfirmArrival(data)
+    local active=D.active
+    if not data or not active or data.generation~=D.generation or data.id~=active.id then return false end
+    local p=active.participants[2]
+    if p.token~=data.token or not D.CheckActive() then return false end
+    if active.met then return true end
+    local anchor=position(entityFor(active.participants[1]))
+    local here=position(entityFor(p))
+    if not anchor or not here or math.abs(anchor.z-here.z)>1.5 then
+        D.Cancel("arrival_not_confirmed");return false
+    end
+    local gap=distance(anchor,here)
+    active.meetingDistance=gap
+    if gap>cfg().arrivalDistance then
+        if p.arrivalDeadline and now()<p.arrivalDeadline then
+            Script.SetTimerForFunction(100,"nebakovrising.Conversations.ConfirmArrival",data)
+            return false
+        end
+        log("Varis dogrulanamadi: mesafe=" .. tostring(gap) .. ", sinir=" .. tostring(cfg().arrivalDistance))
+        D.Cancel("arrival_not_confirmed");return false
+    end
+    p.arrived,active.met,active.phase=true,true,"waiting_audio"
+    active.faceDeadline=now()+(cfg().faceTimeout or 8)
+    active.deadline=now()+(cfg().generationTimeout or 240)
+    log("Varis dogrulandi: mesafe=" .. tostring(gap))
     bridge().Emit("director_status")
     return true
+end
+
+function D.Arrived(entity, token)
+    local p=D.Participant(entity.this.id,token)
+    if not p or not p.mover or not D.CheckActive() then return false end
+    p.arrivalDeadline=p.arrivalDeadline or now()+(cfg().arrivalSettleSeconds or 2)
+    D.active.deadline=math.max(D.active.deadline,p.arrivalDeadline)
+    local id=D.active.id
+    D.ConfirmArrival({generation=D.generation,id=id,token=token})
+    -- This return keeps the BT alive; active.met is the physical arrival gate.
+    return D.active~=nil and D.active.id==id
 end
 
 function D.Partner(entity, token)
@@ -256,47 +283,18 @@ end
 function D.HasMet(entity, token)
     return D.ParticipantAlive(entity.this.id,token) and D.active.met==true
 end
-function D.TurnStep(entity, token)
+function D.TurnStarted(entity, token)
     local p=D.Participant(entity.this.id,token)
     if not p or not D.HasMet(entity,token) then return false end
-    local other=entityFor(D.active.participants[p.mover and 1 or 2])
-    local a,b=position(entity),position(other)
-    -- The binding documents the no-argument form as forward. Indexed variants
-    -- differ between engine bindings and are unsuitable for this gate.
-    local ok,f=pcall(entity.GetDirectionVector,entity)
-    if not a or not b or not ok or type(f)~="table" or type(f.x)~="number" or type(f.y)~="number" then return false end
-    local dx,dy=b.x-a.x,b.y-a.y
-    if dx*dx+dy*dy<0.001 or f.x*f.x+f.y*f.y<0.001 then return false end
-    local error=math.atan2(f.x*dy-f.y*dx,f.x*dx+f.y*dy)
-    p.facingError=math.deg(math.abs(error))
-    if p.facingError<=20 then return true end
-    -- Read and write the same body transform. Actor.SetAngles can acknowledge
-    -- a view rotation without changing the transform returned by Entity.GetAngles.
-    local getter,setter,context=entity.GetAngles,entity.SetAngles,entity
-    p.turnMethod="entity.SetAngles"
-    if (type(getter)~="function" or type(setter)~="function") and entity.actor
-        and type(entity.actor.GetAngles)=="function" and type(entity.actor.SetAngles)=="function" then
-        getter,setter,context=entity.actor.GetAngles,entity.actor.SetAngles,entity.actor
-        p.turnMethod="actor.GetAngles/SetAngles"
-    end
-    if type(getter)~="function" or type(setter)~="function" then p.turnError="Body rotation API unavailable";return false end
-    local anglesOk,angles=pcall(getter,context)
-    if not anglesOk or type(angles)~="table" or type(angles.z)~="number" then p.turnError="GetAngles unavailable";return false end
-    p.bodyYaw=angles.z
-    local time=now()
-    local elapsed=math.max(0,math.min(0.25,time-(p.lastTurnTime or time-0.1)))
-    p.lastTurnTime=time
-    local step=math.rad(cfg().turnDegreesPerSecond or 120)*elapsed
-    local change=math.max(-step,math.min(step,error))
-    p.requestedYaw=angles.z+change
-    p.turnWrites=(p.turnWrites or 0)+1
-    local setOk,result=pcall(setter,context,{x=angles.x or 0,y=angles.y or 0,z=angles.z+change})
-    p.turnError=(not setOk or result==false) and tostring(result) or nil
-    return setOk and result~=false
+    p.turnMethod="BT.Turn"
+    p.turnTarget=tostring(D.Partner(entity,token))
+    p.nativeTurnComplete=false
+    return true
 end
 function D.Faced(entity, token)
     local p=D.Participant(entity.this.id,token)
     if not p or not D.HasMet(entity,token) then return false end
+    p.nativeTurnComplete=true
     local other=entityFor(D.active.participants[p.mover and 1 or 2])
     local a,b=position(entity),position(other)
     local ok,f=pcall(entity.GetDirectionVector,entity)
@@ -369,6 +367,7 @@ function D.Snapshot()
         in_nebakov=D.inRegion==true, arrived=active and active.arrived==true or false,
         audio_ready=active and active.audioReady==true or false, control=D.ack,
         owner=active and active.peer or nil,
+        meeting_distance=active and active.meetingDistance,
         voice_catalog_required=D.peer and D.peer.hasCatalog==true or false,
         control_io=D.controlIO,
         face=nebakovrising.VoiceFace and nebakovrising.VoiceFace.last,

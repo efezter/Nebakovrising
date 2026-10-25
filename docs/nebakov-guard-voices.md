@@ -2,11 +2,15 @@
 
 ## Kullanım
 
+Hazır ses test başlatıcısı yalnız tamamlanmış conversation.json + dört WAV varsa kullanılabilir. Klasör boşsa start_patrol_conversations.cmd ile yeni konuşma üretilir.
+
 1. Oyun, önceki voice bridge ve TTS router pencerelerini kapatıp yeniden başlat: `D:\NebakovVoice\start_tts_router.ps1`, ardından `D:\NebakovVoice\server\start_patrol_conversations.cmd`.
 2. Köprü başlangıçta `D:\NebakovVoice\tts\voices` klasöründeki `guard*.wav` dosyalarını tarar. `guard1.wav`, `guards16.wav`, `guards_new.wav` desteklenir. Dosya adında yalnız ASCII harf/rakam, `_` ve `-` kullanılır. Örnekler 5 saniyeden uzun olmalı. Geçersiz örnekler loglanır ve havuza alınmaz; mevcut `guard1.wav` geçersizse yanlış fallback kullanmamak için başlangıç durdurulur.
 3. Nebakov'da `nebakov_voice_assignments` ile kalıcı atamaları gör. `nebakov_conversation_test` iki uygun patrol guard'ını seçer. Rastgele tetikleme kapalıdır.
-4. Birinci guard bekler; ikinci yaklaşık 1,3 metreye yürür (varış sınırı 1,8 metre). İkisinin gövde yönü kontrollü yaw adımlarıyla birbirine çevrilir; sonuç parametresiz GetDirectionVector() ile doğrulanır. Gövde dönüşünde Entity.GetAngles/SetAngles çifti kullanılır; Actor.SetAngles ile Entity.GetAngles karıştırılmaz. Her iki yön de 20 derece toleransla doğrulanmadan ses başlamaz.
+4. Birinci guard bekler; ikinci yaklaşık 1,3 metreye yürür (varış sınırı 1,8 metre). İkisi de ayakta duruş içinde oyunun native Turn davranışıyla döner. Hedef değişkeni vanilla örneklerdeki gibi _wuid türündedir. Doğrudan açı yazılmaz; dönüşün sonucu parametresiz GetDirectionVector() ile doğrulanır. Her iki yön de 20 derece toleransla doğrulanmadan ses başlamaz.
 5. Save alıp yükledikten sonra aynı guard'ın dosya adı korunmalı. Ölen guard'ın sesi yeni bir guard'a verilebilir.
+
+Native Move son frenleme/root-motion karesi bitmeden başarı bildirebildiği için varış hemen iptal edilmez. Rezervasyonlar korunarak 100 ms aralıklarla, en fazla 2 saniye gerçek mesafe kontrol edilir. Bu süre içinde mesafe 1,8 metreye inmezse veya kat farkı 1,5 metreyi aşarsa konuşma iptal edilir. Dönüş ancak fiziksel varış doğrulanınca başlar.
 
 ## Atama kuralları
 
@@ -28,4 +32,4 @@ Lua, her konuşmacının `voicesampleid` bilgisini konum paketine ekler. Python 
 
 ## Doğrulama sınırı
 
-140 otomatik test geçti. Bunlar katalog → Lua onayı → save kaydı → telemetri → üretim işi aktarımını; 15 benzersiz ses/overflow, ölüm, yeniden yükleme, dosya ekleme/çıkarma ve Standard/Turbo yönlendirmesini kapsıyor. Gerçek Python oynatıcı + Lua/BT buluşma/dönme akışı, WAV fixture'ları ve sessiz SDL çıkışıyla da geçti. Oyun navigasyonu, yeni karşılıklı dönüş ve gerçek save/load ses atamaları ayrıca oyun içinde doğrulanmalı.
+144 otomatik test geçti. Bunlar katalog → Lua onayı → save kaydı → telemetri → üretim işi aktarımını; 15 benzersiz ses/overflow, ölüm, yeniden yükleme, dosya ekleme/çıkarma ve Standard/Turbo yönlendirmesini kapsıyor. Gerçek Python oynatıcı + Lua/BT buluşma/dönme akışı, WAV fixture'ları ve sessiz SDL çıkışıyla da geçti. Oyun navigasyonu, yeni karşılıklı dönüş ve gerçek save/load ses atamaları ayrıca oyun içinde doğrulanmalı.

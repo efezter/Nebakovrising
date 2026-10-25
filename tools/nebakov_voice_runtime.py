@@ -292,13 +292,20 @@ class InstanceLock:
 def latest_manifest(root=Path(r"D:\NebakovVoice\output\conversations")):
     # The service writes JSON before rendering audio. Skip unfinished outputs.
     files = sorted(root.glob("*/conversation.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        raise ValueError(f"No saved conversation.json in {root}. Start start_patrol_conversations.cmd to generate one.")
+    failures = []
     for manifest in files:
         try:
             load_manifest(manifest)
-        except (OSError, ValueError, EOFError, wave.Error):
+        except PermissionError:
+            raise
+        except (OSError, ValueError, EOFError, wave.Error) as error:
+            failures.append(f"{manifest.parent.name}: {error}")
             continue
         return manifest
-    raise ValueError("No complete conversation found; render all four WAVs with NebakovVoice first")
+    raise ValueError("No playable conversation. " + "; ".join(failures[:2])
+                     + ". Start start_patrol_conversations.cmd to generate a new one.")
 
 
 def run(args, config, preset):

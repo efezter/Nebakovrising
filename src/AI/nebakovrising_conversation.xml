@@ -29,7 +29,7 @@
             <Variable name="mover" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="active" type="_bool" values="true" isPersistent="0" form="single" />
             <Variable name="target" type="vec3" values="" isPersistent="0" form="single" />
-            <Variable name="partner" type="wuid" values="" isPersistent="0" form="single" />
+            <Variable name="partner" type="_wuid" values="" isPersistent="0" form="single" />
             <Variable name="met" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="faced" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
@@ -63,7 +63,10 @@
                             </Sequence></While>
                             <ExecuteLua code="data.partner = nebakovrising.Conversations.Partner(entity, data.activityToken)" />
                             <While doFail="false" propagateChildFail="false" condition="$faced == false"><Sequence>
-                                <ExecuteLua code="nebakovrising.Conversations.TurnStep(entity, data.activityToken)" />
+                                <ExecuteLua code="nebakovrising.Conversations.TurnStarted(entity, data.activityToken)" />
+                                <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
+                                    <Turn target="$partner" align="false" />
+                                </StanceElement>
                                 <Wait duration="'100ms'" timeType="GameTime" doFail="false" />
                                 <ExecuteLua code="data.faced = nebakovrising.Conversations.Faced(entity, data.activityToken)" />
                             </Sequence></While>

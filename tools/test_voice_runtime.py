@@ -209,6 +209,18 @@ class FilesAndAudioTests(unittest.TestCase):
         os.utime(pending, (2000000000, 2000000000))
         self.assertEqual(latest_manifest(self.folder), complete / "conversation.json")
 
+    def test_empty_ready_audio_test_points_to_generation_launcher(self):
+        with self.assertRaisesRegex(ValueError,'start_patrol_conversations.cmd') as error:
+            latest_manifest(self.folder)
+        self.assertIn('No saved conversation.json',str(error.exception))
+
+    def test_incomplete_ready_audio_test_reports_missing_wav(self):
+        pending=self.folder/'pending';pending.mkdir()
+        (pending/'conversation.json').write_text(json.dumps({'lines':self.rows}))
+        with self.assertRaisesRegex(ValueError,'pending') as error:
+            latest_manifest(self.folder)
+        self.assertIn('1.wav',str(error.exception))
+
     def test_manifest_order_and_actual_channel_completion(self):
         self.rows.reverse()
         self.save()
