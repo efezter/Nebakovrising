@@ -1,5 +1,7 @@
 # Patrol sohbetleri — kurulum ve oyun testi
 
+Güncel kullanım: [JSON profilleri, rastgele patrol sohbetleri ve önce-hazırla akışı](nebakov-natural-patrol.md).
+
 Güncel aşama: [dinamik guard ses havuzu, kalıcı atamalar ve karşılıklı dönme](nebakov-guard-voices.md).
 
 ## Yeni üretim ve ağız animasyonu testi

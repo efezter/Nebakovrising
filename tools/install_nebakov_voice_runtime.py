@@ -10,7 +10,9 @@ SERVER = Path(r"D:\NebakovVoice\server")
 FILES = ["nebakov_voice_receiver.py", "nebakov_voice_playback.py",
          "nebakov_voice_engine_adapter.py", "nebakov_voice_runtime.py",
          "nebakov_voice_director.py", "start_patrol_conversations.cmd", "test_patrol_voices.cmd",
-         "start_nebakov_voice.cmd", "test_existing_npc_voices.cmd", "nebakov_voice_samples.py"]
+         "start_nebakov_voice.cmd", "test_existing_npc_voices.cmd", "nebakov_voice_samples.py",
+         "nebakov_voice_config.py", "nebakov_voice_prompts.py",
+         "nebakov_voice_defaults.py", "nebakov_voice_transport.py"]
 ENGINE_FILES = ["conversation_engine.py", "config.py", "generate_dialogue.py", "offline-tts.py"]
 
 
@@ -22,6 +24,14 @@ def install():
     if not (SERVER / ".venv/Scripts/python.exe").is_file():
         raise RuntimeError("Existing NebakovVoice environment not found")
     before = {name: digest(SERVER / name) for name in ENGINE_FILES}
+    from nebakov_voice_config import load_config
+    from nebakov_voice_prompts import PromptProfiles
+    config_root = SERVER.parent / "config"
+    settings_file = config_root / "conversations.json"
+    from nebakov_voice_defaults import ensure_defaults
+    ensure_defaults(config_root)
+    settings = load_config(settings_file)
+    PromptProfiles(config_root / 'prompts').load(settings['profileId'])
     service = ROOT / "tools/tts_service"
     baseline = json.loads((service / "baseline_hashes.json").read_text())
     state_file = SERVER.parent / "tts/nebakov_voice_installed.json"
@@ -63,6 +73,7 @@ def install():
     if not command.exists():
         command.write_text("-- NebakovVoice control channel; waiting for runtime.\n", encoding="ascii")
     print(f"Installed and hash-verified {len(FILES)} bridge files and TTS voice routing; engine/generation/model logic preserved.")
+    print(f"Conversation settings: {settings_file}; existing JSON settings/profiles preserved.")
     if backup.exists():
         print(f"Previous bridge versions: {backup}")
 

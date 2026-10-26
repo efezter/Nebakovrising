@@ -85,6 +85,9 @@
                 <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_patrol_conversation">
                     <TreeLocation FileName="nebakovrising_conversation.xml" TreeName="nebakovrising_patrol_conversation" />
                 </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_receiver_conversation">
+                    <TreeLocation FileName="nebakovrising_conversation.xml" TreeName="nebakovrising_receiver_conversation" />
+                </SmartBehaviorTemplate>
             </BehaviorTemplates>
         </SmartEntityTemplate>
     </SmartEntitys>

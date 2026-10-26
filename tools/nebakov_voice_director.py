@@ -14,10 +14,13 @@ import math
 
 from nebakov_voice_playback import load_manifest
 from nebakov_voice_samples import valid_name
+from nebakov_voice_config import encode_settings, validate_payload
+from nebakov_voice_transport import lua_path
 
-KINDS = {"heartbeat_ready", "heartbeat_busy", "audio_ready", "playing", "finished", "cancel", "error", "line_start", "line_end", "voice_catalog"}
+KINDS = {"heartbeat_ready", "heartbeat_busy", "audio_ready", "playing", "finished", "cancel", "error", "line_start", "line_end", "voice_catalog", "conversation_config"}
+KINDS.update({"telemetry_probe", "telemetry_confirm"})
 TOKEN = re.compile(r"[A-Za-z0-9_.:+-]{0,96}\Z")
-ACTIVE_PHASES = {"reserved", "approaching", "waiting_audio", "playing"}
+ACTIVE_PHASES = {"preparing_audio", "reserved", "approaching", "waiting_audio", "playing"}
 
 
 def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
@@ -26,6 +29,11 @@ def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
     if any(not isinstance(s, str) or not TOKEN.fullmatch(s) for s in (peer, session, conversation)):
         raise ValueError("Invalid control token")
     extra = ""
+    if kind in {"telemetry_probe", "telemetry_confirm"}:
+        extra = ', %s, 0' % lua_path(line)
+    if kind == "conversation_config":
+        line, duration = encode_settings(validate_payload(line, duration))
+        extra = ', "%s", "%s"' % (line, duration)
     if kind == "voice_catalog":
         ids = line.split(",") if isinstance(line, str) else []
         if not 1 <= len(ids) <= 128 or any(not valid_name(n) for n in ids) or duration not in ids:
@@ -43,7 +51,7 @@ def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
 
 
 class CommandOutbox:
-    def __init__(self, path: Path, emit, catalog=None):
+    def __init__(self, path: Path, emit, catalog=None, settings=None, telemetry_file=None):
         self.path, self.emit = path, emit
         self.peer = uuid.uuid4().hex
         self.session = None
@@ -54,6 +62,15 @@ class CommandOutbox:
         self.rejected = None
         self.last_ack = None
         self.catalog, self.catalog_sent = catalog, False
+        self.settings, self.settings_sent = settings, False
+        self.telemetry_file = str(telemetry_file) if telemetry_file else None
+        if self.telemetry_file: lua_path(self.telemetry_file)
+        self.probe_sent = self.confirm_sent = False
+        self.file_seen_session, self.file_seen_seq = None, 0
+        self.file_min_seq, self.transport_mode = 0, None
+
+    def note_file(self, packet):
+        self.file_seen_session, self.file_seen_seq = packet['session'], packet['seq']
 
     def observe(self, packet, now):
         if packet["session"] != self.session:
@@ -63,14 +80,27 @@ class CommandOutbox:
             self.last_heartbeat = -100.0
             self.last_ack = None
             self.catalog_sent = False
+            self.settings_sent = False
+            self.probe_sent = self.confirm_sent = False
+            self.file_min_seq, self.transport_mode = 0, None
             # Sequence stays monotonic when Lua starts a new conversation session.
+        transport = packet.get('transport') or {}
+        mode = transport.get('mode')
+        if mode and mode != self.transport_mode:
+            self.emit('telemetry_transport', mode=mode, reason=transport.get('error'))
+            if mode == 'log': self.confirm_sent = False
+            self.transport_mode = mode
+        if mode == 'log' and transport.get('file_status') == 'unavailable':
+            self.file_min_seq = packet['seq'] + 1
+            self.confirm_sent = False
         ack = (packet.get("director") or {}).get("control")
         if self.pending and ack and ack["peer"] == self.peer and ack["seq"] == self.pending["seq"]:
             self.last_ack = {**self.pending, "accepted": ack["accepted"]}
             self.emit("control_ack", kind=self.pending["kind"], accepted=ack["accepted"], seq=ack["seq"])
             if not ack["accepted"]:
-                if self.pending["kind"] == "voice_catalog":
-                    raise RuntimeError("Game rejected guard voice catalog")
+                if self.pending['kind'] == 'telemetry_confirm': self.confirm_sent = False
+                if self.pending["kind"] in {"voice_catalog", "conversation_config"}:
+                    raise RuntimeError("Game rejected " + self.pending["kind"])
                 self.rejected = self.pending["conversation"], self.pending["kind"]
             self.pending = None
 
@@ -94,16 +124,27 @@ class CommandOutbox:
         temporary = self.path.with_name(self.path.name + f".{os.getpid()}.tmp")
         temporary.write_text(command_source(self.peer, message["seq"], message["kind"],
                                             self.session, message["conversation"],
-                                            message.get("line", 0), message.get("duration", 0)), encoding="ascii")
+                                            message.get("line", 0), message.get("duration", 0)), encoding="utf-8")
         os.replace(temporary, self.path)
 
     def tick(self, now, ready):
         if self.session is None:
             return
         if not self.pending:
-            if self.catalog and not self.catalog_sent:
+            if self.telemetry_file and not self.probe_sent:
+                self.queue.appendleft(('telemetry_probe', '', self.telemetry_file, 0))
+                self.probe_sent = True
+            elif (self.telemetry_file and not self.confirm_sent and self.file_seen_session == self.session
+                    and self.file_seen_seq >= self.file_min_seq):
+                self.queue.appendleft(('telemetry_confirm', '', self.telemetry_file, 0))
+                self.confirm_sent = True
+            elif self.catalog and not self.catalog_sent:
                 self.queue.appendleft(("voice_catalog", "", ",".join(self.catalog["ids"]), self.catalog["fallback"]))
                 self.catalog_sent = True
+            elif self.settings and not self.settings_sent:
+                csv, profile = encode_settings(self.settings)
+                self.queue.appendleft(("conversation_config", "", csv, profile))
+                self.settings_sent = True
             if self.queue:
                 kind, conversation, line, duration = self.queue.popleft()
             elif now - self.last_heartbeat >= 1:
@@ -147,6 +188,8 @@ class PatrolController:
         self.session, self.conversation, self.job, self.manifest = None, None, None, None
         self.retired = deque(maxlen=64)
         self.started = None
+        self.scene_timeout = (outbox.settings["generationTimeout"] + 240) if outbox.settings else 300
+        self.last_attempt_key = None
         self.play_requested = False
         # Wait for the game to process each line's animation cue before sound.
         self.playback.before_line = self.prepare_line
@@ -202,6 +245,12 @@ class PatrolController:
             self.invalidate("game_time_reversed", now)
             return
         self.game_time, self.packet, self.received = packet["game_time"], packet, now
+        attempt = director.get("last_attempt")
+        if isinstance(attempt, dict):
+            key = attempt.get("seq"), attempt.get("game_time")
+            if key != self.last_attempt_key:
+                self.last_attempt_key = key
+                self.emit("patrol_attempt", started=attempt.get("started"), manual=attempt.get("manual"), reason=attempt.get("reason"))
         identity, phase = director["id"], director["phase"]
         if phase == "finished" and identity == self.conversation and self.state == "finishing":
             self.emit("conversation_finished", conversation=identity, job=self.job)
@@ -242,13 +291,18 @@ class PatrolController:
             self._audio_ready(manifest, now)
 
     def tick(self, now):
+        # Queue gameplay/audio controls before considering an idle heartbeat.
+        # Pending commands still require their ACK; no safety gate is bypassed.
+        self._tick_state(now)
         self.outbox.tick(now, self.worker_ready())
+
+    def _tick_state(self, now):
         if not self.conversation:
             return
         if not self.fresh(now):
             self.cancel("telemetry_stale", now)
             return
-        if now-self.started > 300:
+        if now-self.started > self.scene_timeout:
             self.cancel("conversation_timeout", now)
             return
         p, d = self.packet, self.packet["director"]
@@ -259,7 +313,7 @@ class PatrolController:
             self.cancel("control_rejected", now)
             self.outbox.rejected = None
             return
-        if self.state == "preparing" and d["phase"] in {"approaching", "waiting_audio"}:
+        if self.state == "preparing" and d["phase"] in {"preparing_audio", "approaching", "waiting_audio"}:
             if self.preset:
                 self._audio_ready(self.preset, now)
             else:

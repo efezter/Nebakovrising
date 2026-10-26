@@ -125,10 +125,14 @@ def decode_packet(line: bytes) -> dict:
         raise ValueError("invalid player forward vector")
     director = packet.get("director")
     if director is not None:
-        phases = {"idle", "reserved", "approaching", "waiting_audio", "playing", "finished", "cancelled"}
+        phases = {"idle", "preparing_audio", "reserved", "approaching", "waiting_audio", "playing", "finished", "cancelled"}
+        if isinstance(director,dict) and director.get("profile_id") is not None:
+            from nebakov_voice_config import PROFILE_ID
+            if not isinstance(director["profile_id"],str) or not PROFILE_ID.fullmatch(director["profile_id"]):
+                raise ValueError("invalid prompt profile")
         if (not isinstance(director, dict) or director.get("version") != 1
                 or not isinstance(director.get("id"), str) or len(director["id"]) > 96
-                or director.get("phase") not in phases or director.get("behavior") != "patrol"
+                or director.get("phase") not in phases or director.get("behavior") not in {"patrol","meal","idle"}
                 or any(type(director.get(key)) is not bool for key in
                        ("enabled", "in_nebakov", "arrived", "audio_ready"))):
             raise ValueError("invalid conversation director")

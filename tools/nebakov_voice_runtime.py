@@ -20,14 +20,20 @@ from nebakov_voice_receiver import (DEFAULT_LOG, DEFAULT_OUTPUT, LogTail,
 from nebakov_voice_playback import PygameAudio, SequentialPlayback, load_manifest
 from nebakov_voice_engine_adapter import worker_main
 from nebakov_voice_director import CommandOutbox, PatrolController
+from nebakov_voice_config import DEFAULT_CONFIG, load_config
+from nebakov_voice_prompts import DEFAULT_PROFILES, PromptProfiles
+from nebakov_voice_transport import FileSnapshot, BoundedJournal
 
 
 def build_context(packet):
     director = packet.get("director")
     if director and director.get("id"):
         behavior = director.get("behavior")
-        if behavior != "patrol":
+        if behavior not in {"patrol","meal","idle"}:
             raise ValueError("No conversation context handler for " + str(behavior))
+        if behavior != 'patrol':
+            return ('Two named Nebakov guards are nearby and '+behavior+'. They remain in their current postures. '
+                    'Write a brief natural exchange with a greeting, without movement instructions.')
         hour = (director.get("context") or {}).get("hour")
         time_context = f"The in-game hour is {hour:.1f}. " if isinstance(hour, (int, float)) else ""
         return ("Marek and Hertl are speaker aliases for two castle guards at Nebakov. "
@@ -211,12 +217,13 @@ class Controller:
 
 
 class Worker:
-    def __init__(self, engine_dir, emit, timeout=900.0):
+    def __init__(self, engine_dir, emit, timeout=900.0, prompts=None, prewarm=False):
         self.engine_dir, self.emit, self.timeout = engine_dir, emit, timeout
         self.ready, self.busy, self.started = False, None, time.monotonic()
+        self.prompts = prompts
         context = mp.get_context("spawn")
         self.commands, self.results = context.Queue(maxsize=1), context.Queue()
-        self.process = context.Process(target=worker_main, args=(self.commands, self.results, str(engine_dir)), daemon=True)
+        self.process = context.Process(target=worker_main, args=(self.commands, self.results, str(engine_dir), prewarm), daemon=True)
         self.process.start()
 
     def submit(self, packet):
@@ -226,7 +233,12 @@ class Worker:
         samples = {n["name"]: n["voicesampleid"] for n in packet.get("npcs", []) if n.get("voicesampleid")}
         if packet.get("director") and packet["director"].get("voice_catalog_required") and len(samples) != 2:
             raise ValueError("Both guards need a persisted voicesampleid")
-        self.commands.put_nowait({"id": job, "session": packet["session"], "context": build_context(packet), "voicesampleid": samples})
+        prompts = getattr(self, "prompts", None)
+        prepared = prompts.prepare(packet) if prompts and (packet.get("director") or {}).get("profile_id") else None
+        self.commands.put_nowait({"id": job, "session": packet["session"],
+            "context": prepared["text"] if prepared else build_context(packet), "voicesampleid": samples,
+            "profile_id": prepared["profile_id"] if prepared else None,
+            "prompt_parameters": prepared["prompt_parameters"] if prepared else None})
         self.busy, self.started = job, time.monotonic()
         self.emit("generation_started", job=job, session=packet["session"], seq=packet["seq"])
         return job
@@ -313,10 +325,13 @@ def run(args, config, preset):
     worker, audio, controller = None, None, None
     # Instance lock is global to the engine directory even with different output dirs.
     with InstanceLock(args.engine_dir / "nebakov_voice_runtime.lock"), \
-            (args.output_dir / "bridge_events.jsonl").open("a", encoding="utf-8", buffering=1) as journal:
+            BoundedJournal(args.output_dir / "bridge_events.jsonl") as journal:
         completed = False
         def emit(event, **fields):
             nonlocal completed
+            if event == 'telemetry' or (event in {'control_sent', 'control_ack'}
+                    and fields.get('kind', '').startswith('heartbeat_')):
+                return
             if event == "conversation_finished":
                 completed = True
             record = {"at": datetime.now(timezone.utc).isoformat(), "event": event, **fields}
@@ -325,6 +340,8 @@ def run(args, config, preset):
                 print(json.dumps(record, ensure_ascii=True), flush=True)
         tail = LogTail(args.game_log, include_exit=True)
         tail.poll()  # Establish live EOF before warming models; never replay history.
+        telemetry_file = args.command_file.parent / 'telemetry.json'
+        file_snapshot = FileSnapshot(telemetry_file)
         receiver = PositionReceiver()
         write_snapshot(args.output_dir, {"status": "waiting_for_telemetry", "generation_enabled": preset is None, "packet": None})
         emit("runtime_started", mode="existing_wavs" if preset else "generate", settings=asdict(config),
@@ -332,34 +349,51 @@ def run(args, config, preset):
         try:
             audio = PygameAudio()
             playback = SequentialPlayback(audio, emit, config.volume)
+            if args.director:
+                print(f"Conversation config: {args.config.absolute()}", flush=True)
+            conversation_settings = load_config(args.config) if args.director else None
+            if conversation_settings and (preset or args.manual):
+                conversation_settings["randomEnabled"] = False
+            prompts = PromptProfiles(args.profiles_dir) if conversation_settings else None
+            if prompts:
+                prompts.load(conversation_settings["profileId"])
+                emit("conversation_settings", config_file=str(args.config.absolute()),
+                    profiles_dir=str(args.profiles_dir.absolute()), settings=conversation_settings)
             if not preset:
-                worker = Worker(args.engine_dir, emit, args.worker_timeout)
+                worker = Worker(args.engine_dir, emit, args.worker_timeout, prompts,
+                    bool(conversation_settings and conversation_settings.get("prewarmModel", True)))
             if args.director:
                 from nebakov_voice_samples import discover
                 catalog = discover(args.voices_dir) if not preset else None
                 if catalog:
                     emit("voice_catalog", samples=catalog["ids"], fallback=catalog["fallback"], rejected=catalog["rejected"])
-                outbox = CommandOutbox(args.command_file, emit, catalog)
+                outbox = CommandOutbox(args.command_file, emit, catalog, conversation_settings, telemetry_file)
                 controller = PatrolController(config, playback, worker.submit if worker else lambda p: None,
                     emit, outbox, lambda: worker is None or (worker.ready and worker.busy is None), preset)
-                print("READY: patrol director mode. In KCD2: nebakov_conversation_start; "
-                      "then nebakov_conversation_test. No bind_pair needed. Wait for control_ack accepted=true.", flush=True)
+                print("READY: " + ("manual ready-audio test. " if preset else "24-hour conversations for stationary guards. ") +
+                      "Manual test: nebakov_conversation_test. Wait for settings/catalog ACK and engine_ready.", flush=True)
             else:
                 controller = Controller(config, playback, worker.submit if worker else lambda p: None, emit, preset)
                 print("READY: in KCD2 run nebakov_voice_bind_pair. Approach both guards within "
                       f"{config.proximity:g} m. Manual request: nebakov_voice_talk. Stop: nebakov_voice_stop.", flush=True)
             while True:
-                for line in tail.poll():
+                incoming = [(False, line) for line in tail.poll()]
+                file_packet = file_snapshot.poll()
+                if file_packet is not None:
+                    incoming.append((True, file_packet))
+                for from_file, line in incoming:
                     now = time.monotonic()
-                    if b"CSystem::Quit invoked" in line:
+                    if not from_file and b"CSystem::Quit invoked" in line:
                         controller.invalidate("game_exit", now)
                         emit("game_exit")
                         continue
                     try:
-                        packet = decode_packet(line)
+                        packet = line if from_file else decode_packet(line)
                     except (ValueError, TypeError, KeyError, UnicodeError, IndexError):
                         emit("malformed_packet")
                         continue
+                    if from_file and args.director:
+                        controller.outbox.note_file(packet)
                     snapshot = receiver.accept(packet, now)
                     if snapshot is None:
                         continue
@@ -406,6 +440,8 @@ def main(argv=None):
     parser.add_argument("--engine-dir", type=Path, default=Path(r"D:\NebakovVoice\server"))
     parser.add_argument("--manifest", help="Existing conversation.json or 'latest'; never calls Gemini/TTS")
     parser.add_argument("--voices-dir", type=Path, default=Path(r"D:\NebakovVoice\tts\voices"))
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--profiles-dir", type=Path, default=DEFAULT_PROFILES)
     parser.add_argument("--manual", action="store_true", help="Only nebakov_voice_talk requests; retain proximity/cooldown")
     parser.add_argument("--check", action="store_true", help="Check mixer and warm the TTS worker; never generates or plays speech")
     parser.add_argument("--once", action="store_true", help="Exit after one conversation has actually finished")

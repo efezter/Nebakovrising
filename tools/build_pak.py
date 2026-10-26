@@ -72,6 +72,8 @@ def build():
     finally:
         if temporary.exists():
             temporary.unlink()
+    from build_npc_names import build_localization
+    build_localization()
     print(f"Built and verified: {destination} ({len(entries)} files)")
     if backup:
         print(f"Previous package backup: {backup}")

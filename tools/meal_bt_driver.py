@@ -3,6 +3,7 @@
 Engine animation and navigation nodes are mocks; ExecuteLua runs the actual mod.
 This checks ordering/cancellation contracts, not in-game animation correctness.
 """
+from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 
@@ -13,6 +14,8 @@ class MealBtDriver:
         self.entity = entity
         self.token = token
         self.functions = {t.get("name"): t for t in ET.parse(path).getroot()}
+        conversation = Path(path).with_name("nebakovrising_conversation.xml")
+        self.functions.update({t.get("name"): t for t in ET.parse(conversation).getroot()})
         self.blocked_seats = set(blocked_seats)
         self.blocked_bowl = blocked_bowl
         self.blocked_standing = blocked_standing
@@ -138,7 +141,11 @@ class MealBtDriver:
             self.stance = node.get("stance")
             return (yield from self.sequence(node, data))
         if tag == "StanceCheck":
-            return self.stance == node.get("stance")
+            matches = self.stance == node.get("stance")
+            if node.find("Then") is not None or node.find("Else") is not None:
+                branch = node.find("Then" if matches else "Else")
+                return (yield from self.sequence(branch, data)) if branch is not None else True
+            return matches
         if tag in ("WaitAction", "UnstanceAction"):
             yield
             return True

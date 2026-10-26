@@ -33,12 +33,15 @@ nebakovrising.Config = {
     -- Milestone 1: outbound position telemetry only; generation/playback stay external.
     voiceBridge = { sampleIntervalMs = 250 },
     conversations = {
-        enabled = true, randomEnabled = false, searchRadius = 20, playerExitRadius = 30,
+        enabled = true, randomEnabled = true, searchRadius = 20, playerExitRadius = 30,
+        patrolStartHour = 8, patrolEndHour = 20,
+        prepareBeforeMeeting = true, runtimeConfigRequired = true,
+        profileId = "patrol-daily-talk",
         -- Gate position observed in live telemetry; adjustable castle region.
         regionCenter = { x = 1895, y = 1213, z = 52 },
         regionRadius = 250, regionExitRadius = 280, regionHeight = 80,
-        randomMinSeconds = 30, randomMaxSeconds = 60,
-        cooldownSeconds = 120, npcCooldownSeconds = 180,
+        randomMinSeconds = 120, randomMaxSeconds = 240,
+        cooldownSeconds = 0, npcCooldownSeconds = 0,
         approachDistance = 1.3, arrivalDistance = 1.8,
         faceTimeout = 8,
         arrivalSettleSeconds = 2,
@@ -69,6 +72,8 @@ local Main = nebakovrising.Main
 
 function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/Utils.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_routine_config.lua")
+    nebakovrising.Routines.Load()
     Script.ReloadScript("Scripts/mods/EquipmentData.lua")
     Script.ReloadScript("Scripts/mods/Roles.lua")
     Script.ReloadScript("Scripts/mods/AppearancePools.lua")
@@ -79,7 +84,10 @@ function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/NpcInteraction.lua")
     Script.ReloadScript("Scripts/mods/Spawner.lua")
     Script.ReloadScript("Scripts/mods/CastleUtils.lua")
+    Script.ReloadScript("Scripts/mods/NpcNamesData.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_npc_names.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_bridge.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_conversation_config.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_registry.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_face.lua")
     Script.ReloadScript("Scripts/mods/nebakov_conversations.lua")
@@ -131,6 +139,10 @@ function Main.OnEntitySpawned(entity, name)
         nebakovrising.CastleUtils.SaveManagedNpc(name, nil, false)
     end
     if nebakovrising.Voices then nebakovrising.Voices.Reconcile() end
+    local role=nebakovrising.Roles.Resolve(name)
+    if role and role.bedPool=="guard" and nebakovrising.Conversations and nebakovrising.Conversations.SetEventContext then
+        nebakovrising.Conversations.SetEventContext("garrison_arrival","Another guard has recently joined the castle garrison on duty.",180)
+    end
     nebakovrising.Utils.Log("Spawn edildi: " .. tostring(name) .. " (toplam: " .. nebakovrising.Spawner.GetSpawnedCount() .. ")")
     local bedName
     if assignedBed and assignedBed.GetName then
@@ -171,6 +183,9 @@ function Main.Status()
     end
     nebakovrising.Utils.Log("Yuklu yonetilen NPC sayisi: " .. tostring(managedNpcCount))
 end
+
+
+
 
 -- Oyun/dunya yuklendikten sonra calistirmak istedigin kod buraya.
 -- NOT: Startup scriptleri oyun acilisinda calisir, o an 'player' henuz yoktur.

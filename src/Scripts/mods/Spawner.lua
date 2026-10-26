@@ -686,6 +686,7 @@ function Spawner.SpawnNpc(name, pos, dir, props)
     end
 
     table.insert(Spawner._names, name)
+    if nebakovrising.Names then nebakovrising.Names.Assign(result,spawnProperties.guidSharedSoulId) end
     nebakovrising.Main.OnEntitySpawned(result, name)   -- ana scripte bildir
 
     local spawnedEntity = result

@@ -40,6 +40,7 @@
                 <IfCondition failOnCondition="false" condition="$requested"><Parallel successMode="Any" failureMode="Any">
                     <Function_nebakovrising_conversation_cancel activityToken="$activityToken" nodeLabel="92000001" />
                     <Sequence>
+                        <ExecuteLua code="nebakovrising.Conversations.SetPatrolPose(entity, data.activityToken, nil)" />
                         <Function_nebakovrising_stand activityToken="$activityToken" nodeLabel="92000002" />
                         <!-- Both guards physically stand before the mover's destination is selected. -->
                         <ExecuteLua code="local p = nebakovrising.Conversations.Participant(entity.this.id, data.activityToken); data.mover = p ~= nil and p.mover == true" />
@@ -75,6 +76,40 @@
                                 <ExecuteLua code="data.active = nebakovrising.Conversations.ParticipantAlive(entity.this.id, data.activityToken)" />
                             </Sequence></While>
                         </Sequence></IfCondition>
+                    </Sequence>
+                </Parallel></IfCondition>
+            </Sequence></Behavior>
+        </Root><ForestContainer /><EditorData EventSet=""><Variables /><ForwardDeclarations /></EditorData>
+    </BehaviorTree>
+    <!-- Runs inside the existing bench stance / leaning link. Never stands,
+         moves or turns the receiver's body, and retains the patrol reservation. -->
+    <BehaviorTree name="nebakovrising_receiver_conversation" is_function="1">
+        <Variables>
+            <Variable name="requested" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="active" type="_bool" values="true" isPersistent="0" form="single" />
+            <Variable name="met" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="faced" type="_bool" values="false" isPersistent="0" form="single" />
+        </Variables>
+        <Parameters><Variable name="activityToken" type="_int" values="0" isPersistent="0" form="single" requirementType="In" /></Parameters>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1"><Sequence>
+                <ExecuteLua code="data.requested = nebakovrising.Conversations ~= nil and nebakovrising.Conversations.ReceiverRequested(entity.this.id, data.activityToken)" />
+                <IfCondition failOnCondition="false" condition="$requested"><Parallel successMode="Any" failureMode="Any">
+                    <Function_nebakovrising_conversation_cancel activityToken="$activityToken" nodeLabel="92000020" />
+                    <Sequence>
+                        <ExecuteLua code="data.active = nebakovrising.Conversations.Prepare(entity, data.activityToken) ~= nil" />
+                        <While doFail="false" propagateChildFail="false" condition="$met == false"><Sequence>
+                            <ExecuteLua code="data.met = nebakovrising.Conversations.HasMet(entity, data.activityToken)" />
+                            <Wait duration="'100ms'" timeType="GameTime" doFail="false" />
+                        </Sequence></While>
+                        <While doFail="false" propagateChildFail="false" condition="$faced == false"><Sequence>
+                            <ExecuteLua code="data.faced = nebakovrising.Conversations.Faced(entity, data.activityToken)" />
+                            <Wait duration="'100ms'" timeType="GameTime" doFail="false" />
+                        </Sequence></While>
+                        <While doFail="false" propagateChildFail="false" condition="$active"><Sequence>
+                            <Wait duration="'250ms'" timeType="GameTime" doFail="false" />
+                            <ExecuteLua code="data.active = nebakovrising.Conversations.ParticipantAlive(entity.this.id, data.activityToken)" />
+                        </Sequence></While>
                     </Sequence>
                 </Parallel></IfCondition>
             </Sequence></Behavior>

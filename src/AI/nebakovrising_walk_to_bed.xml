@@ -59,7 +59,7 @@
                                                 " />
                                                 <IfCondition failOnCondition="true" condition="$hasBed">
                                                     <ExecuteLua code="&#10;
-                                                        System.LogAlways('[nebakovrising] Starting Move toward assigned bed')&#10;
+                                                        System.LogAlways('[nebakovrising] Native approach to assigned bed')&#10;
                                                     " />
                                                 </IfCondition>
                                                 <Function_nebakovrising_stand activityToken="$activityToken" nodeLabel="91000014" />
@@ -68,29 +68,20 @@
                                                     castle.ReleasePatrolAfterStanding(entity.this.id, data.activityToken)&#10;
                                                     castle.FinishMeal(entity, data.activityToken)&#10;
                                                 " />
-                                                <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
-                                                    <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
-                                                        <Sequence>
-                                                            <ExecuteLua code="&#10;
-                                                                nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'moving', nebakovrising.Config.activityMoveTimeout)&#10;
-                                                            " />
-                                                            <Parallel successMode="Any" failureMode="Any">
-                                                                <Move stopWithinDistance="0.700000" stopDistanceVariation="0.200000" rayCasteFlee="false" successDistance="0.000000" changeNPCState="false" fastForwardIncludesMove="false" destinationSpecification="$bedPos" destinationSpecification2="" destinationSpecification3="" speed="Walk" additionalParams="" pathFindingParams="" staminaPolicy="" pathInfo="" />
-                                                                <Function_nebakovrising_activity_deadline activityToken="$activityToken" nodeLabel="91000015" />
-                                                            </Parallel>
-                                                        </Sequence>
-                                                    </MoveParamsDecorator>
-                                                </StanceElement>
+                                                <ExecuteLua code="nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'bed_approach', nebakovrising.Config.activityMoveTimeout)" />
+                                                
+                                                
+                                                
                                                 <ExecuteLua code="&#10;
-                                                    System.LogAlways('[nebakovrising] Bed-walk Move completed')&#10;
+                                                    System.LogAlways('[nebakovrising] Requesting lying stance on assigned bed WUID=' .. tostring(data.bedWuid))&#10;
                                                 " />
-                                                <ExecuteLua code="&#10;
-                                                    local castle = nebakovrising and nebakovrising.CastleUtils&#10;
-                                                    if castle then&#10;
-                                                        castle.SetBedWalkState(entity.this.id, 'completed', data.activityToken)&#10;
-                                                    end&#10;
-                                                " />
-                                                <ExecuteLua code="&#10;
+                                                <Parallel successMode="Any" failureMode="Any"><StanceElement smartObject="$bedWuid" stance="lying" allowAny="false" enabled="true">
+                                                    <AddBuffElement Buff="'cbbedb16-8ab8-4583-b740-a0e8a2521d95'" enabled="true">
+                                                        <EntityContextPresetElement contextPreset="sleeping" enabled="true">
+                                                            <Sequence>
+                                                                <WaitAction />
+<ExecuteLua code="nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'sleeping'); nebakovrising.CastleUtils.SetBedWalkState(entity.this.id, 'completed', data.activityToken)" />
+<ExecuteLua code="&#10;
                                                     local castle = nebakovrising and nebakovrising.CastleUtils&#10;
                                                     if data.hasBed and castle and castle.UnequipSleepingArmor then&#10;
                                                         local ok, result = pcall(castle.UnequipSleepingArmor, entity)&#10;
@@ -101,14 +92,6 @@
                                                         end&#10;
                                                     end&#10;
                                                 " />
-                                                <ExecuteLua code="&#10;
-                                                    System.LogAlways('[nebakovrising] Requesting lying stance on assigned bed WUID=' .. tostring(data.bedWuid))&#10;
-                                                " />
-                                                <StanceElement smartObject="$bedWuid" stance="lying" allowAny="false" enabled="true">
-                                                    <AddBuffElement Buff="'cbbedb16-8ab8-4583-b740-a0e8a2521d95'" enabled="true">
-                                                        <EntityContextPresetElement contextPreset="sleeping" enabled="true">
-                                                            <Sequence>
-                                                                <WaitAction />
                                                                 <Wait duration="'200ms'" timeType="GameTime" doFail="false" variation="" />
                                                                 <ExecuteLua code="&#10;
                                                                     System.LogAlways('[nebakovrising] Bed lying enter action completed in sleeping context')&#10;
@@ -134,7 +117,7 @@
                                                             </Sequence>
                                                         </EntityContextPresetElement>
                                                     </AddBuffElement>
-                                                </StanceElement>
+                                                </StanceElement><Function_nebakovrising_activity_deadline activityToken="$activityToken" nodeLabel="91000015" /></Parallel>
                                                 <AnimationAction fragment="'GuardWakeup'" tags="" eventReferenceObject="" alignObject="" slaveObject="" resourceOverride="" allowTorchForPlayer="false" />
                                                 <Function_nebakovrising_stand activityToken="$activityToken" nodeLabel="91000016" />
                                                 <Sequence>
@@ -172,6 +155,7 @@
                                                                 <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
                                                                     <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
                                                                         <Sequence>
+<ExecuteLua code="nebakovrising.CastleUtils.UnequipMealHeadwear(entity)" />
                                                                             <ExecuteLua code="&#10;
                                                                                 nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'moving', nebakovrising.Config.activityMoveTimeout)&#10;
                                                                             " />
@@ -309,6 +293,7 @@
                                             <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
                                                 <MoveParamsDecorator speed="Walk" pathFindingParams="" doorClosingPolicy="Automatic">
                                                     <Sequence>
+<ExecuteLua code="nebakovrising.CastleUtils.UnequipMealHeadwear(entity)" />
                                                         <ExecuteLua code="&#10;
                                                             nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'moving', nebakovrising.Config.activityMoveTimeout)&#10;
                                                         " />

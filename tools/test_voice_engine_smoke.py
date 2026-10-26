@@ -6,6 +6,9 @@ import time
 
 from nebakov_voice_runtime import Worker
 from nebakov_voice_playback import load_manifest
+from nebakov_voice_config import load_config
+from nebakov_voice_prompts import PromptProfiles
+from nebakov_voice_samples import discover
 
 
 def main():
@@ -14,13 +17,21 @@ def main():
     args = parser.parse_args()
     if not args.generate:
         parser.error("Use --generate to make one real conversation request")
-    worker = Worker(Path(r"D:\NebakovVoice\server"), lambda event, **kw: print(event, flush=True))
+    settings=load_config()
+    prompts=PromptProfiles();prompts.load(settings['profileId'])
+    voices=discover(Path(r'D:\NebakovVoice\tts\voices'))['ids']
+    worker = Worker(Path(r"D:\NebakovVoice\server"), lambda event, **kw: print(event, flush=True),
+        prompts=prompts,prewarm=settings.get('prewarmModel',True))
     try:
         while not worker.ready:
             worker.poll()
             time.sleep(0.05)
         job = worker.submit({"session": "adapter_smoke_not_game", "seq": 1,
-            "director":{"id":"smoke", "behavior":"patrol", "context":{"hour":14}}})
+            "npcs":[{'name':'Marek','voicesampleid':voices[0]},{'name':'Hertl','voicesampleid':voices[1%len(voices)]}],
+            "director":{"id":"smoke", "behavior":"patrol", "profile_id":settings['profileId'],
+                "context":{"hour":14,"time_of_day":"afternoon","location":"Nebakov Castle",
+                    "trigger":"adapter_smoke_not_game","guard_a":"fixture_guard_a","guard_b":"fixture_guard_b",
+                    "guard_a_role":"guard_melee","guard_b_role":"guard_ranged"}}})
         while True:
             for result in worker.poll():
                 if result["id"] != job or result["kind"] != "result":

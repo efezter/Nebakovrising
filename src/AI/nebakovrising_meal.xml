@@ -31,6 +31,8 @@
     <BehaviorTree name="nebakovrising_stand" is_function="1">
         <Variables>
             <Variable name="expired" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="forceReset" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="alreadyStanding" type="_bool" values="false" isPersistent="0" form="single" />
         </Variables>
         <Parameters>
             <Variable name="activityToken" type="_int" values="0" isPersistent="0" form="single" requirementType="In" />
@@ -38,36 +40,42 @@
         <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
             <Behavior canSkip="1">
                 <Sequence>
-                    <ExecuteLua code="&#10;
-                        nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'standing', nebakovrising.Config.stanceTransitionTimeout)&#10;
-                        data.expired = false&#10;
-                    " />
-                    <Parallel successMode="Any" failureMode="Any">
-                        <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
-                            <Sequence>
-                                <WaitAction />
-                                <StanceCheck soul="$this.id" stance="standing" smartObject="" negate="false" failOnCondition="true" saveVersion="2">
-                                    <Then canSkip="1">
-                                        <Success />
-                                    </Then>
-                                </StanceCheck>
-                                <ExecuteLua code="&#10;
-                                    nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'standing_ready')&#10;
-                                " />
-                            </Sequence>
-                        </StanceElement>
+                    <ExecuteLua code="data.forceReset = nebakovrising.CastleUtils.NeedsStandingReset(entity)" />
+                    <StanceCheck soul="$this.id" stance="standing" smartObject="" negate="false" failOnCondition="false" saveVersion="2">
+                        <Then canSkip="1">
+                            <ExecuteLua code="data.alreadyStanding = true" />
+                        </Then>
+                        <Else canSkip="1">
+                            <ExecuteLua code="data.alreadyStanding = false" />
+                        </Else>
+                    </StanceCheck>
+                    <IfCondition failOnCondition="false" condition="$alreadyStanding == false | $forceReset">
                         <Sequence>
-                            <While doFail="false" propagateChildFail="false" condition="$expired == false">
+                            <ExecuteLua code="&#10;                         nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'standing', nebakovrising.Config.stanceTransitionTimeout)&#10;                         data.expired = false&#10;                     " />
+                            <Parallel successMode="Any" failureMode="Any">
+                                <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
+                                    <Sequence>
+                                        <WaitAction />
+                                        <StanceCheck soul="$this.id" stance="standing" smartObject="" negate="false" failOnCondition="true" saveVersion="2">
+                                            <Then canSkip="1">
+                                                <Success />
+                                            </Then>
+                                        </StanceCheck>
+                                        <ExecuteLua code="&#10;                                     nebakovrising.CastleUtils.SetActivityPhase(entity, data.activityToken, 'standing_ready')&#10;                                 &#10;nebakovrising.CastleUtils.StandingConfirmed(entity, data.activityToken)" />
+                                    </Sequence>
+                                </StanceElement>
                                 <Sequence>
-                                    <Wait duration="'500ms'" timeType="GameTime" doFail="false" />
-                                    <ExecuteLua code="&#10;
-                                        data.expired = nebakovrising.CastleUtils.ActivityPhaseExpired(entity.this.id, data.activityToken)&#10;
-                                    " />
+                                    <While doFail="false" propagateChildFail="false" condition="$expired == false">
+                                        <Sequence>
+                                            <Wait duration="'500ms'" timeType="GameTime" doFail="false" />
+                                            <ExecuteLua code="&#10;                                         data.expired = nebakovrising.CastleUtils.ActivityPhaseExpired(entity.this.id, data.activityToken)&#10;                                     " />
+                                        </Sequence>
+                                    </While>
+                                    <Fail />
                                 </Sequence>
-                            </While>
-                            <Fail />
+                            </Parallel>
                         </Sequence>
-                    </Parallel>
+                    </IfCondition>
                 </Sequence>
             </Behavior>
         </Root>
@@ -97,14 +105,17 @@
                     <StanceElement smartObject="" stance="standing" allowAny="false" enabled="true">
                         <Sequence>
                             <WaitAction />
+<ExecuteLua code="if nebakovrising.Conversations then nebakovrising.Conversations.SetPatrolPose(entity, data.activityToken, 'guard') end" />
                             <While doFail="false" propagateChildFail="false" condition="$keepWaiting">
                                 <Sequence>
-                                    <Wait duration="'2s'" timeType="GameTime" doFail="false" />
+                                    <Function_nebakovrising_receiver_conversation activityToken="$activityToken" nodeLabel="92000041" />
+<Wait duration="'2s'" timeType="GameTime" doFail="false" />
                                     <ExecuteLua code="&#10;
                                         data.keepWaiting = nebakovrising.CastleUtils.IsPostMealIdle(entity)&#10;
                                     " />
                                 </Sequence>
                             </While>
+<ExecuteLua code="if nebakovrising.Conversations then nebakovrising.Conversations.SetPatrolPose(entity, data.activityToken, nil) end" />
                         </Sequence>
                     </StanceElement>
                 </Sequence>
@@ -193,11 +204,12 @@
                                                                         <ExecuteLua code="&#10;
                                                                             local castle = nebakovrising.CastleUtils&#10;
                                                                             castle.SetMealProgress(entity, 'eating', data.activityToken)&#10;
-                                                                            castle.SetActivityPhase(entity, data.activityToken, 'eating', math.random(10, 20))&#10;
+                                                                            castle.SetActivityPhase(entity, data.activityToken, 'eating', castle.MealDuration(entity))&#10;                                                                            if nebakovrising.Conversations then nebakovrising.Conversations.SetPatrolPose(entity, data.activityToken, 'sit') end&#10;
                                                                             data.eatExpired = false&#10;
                                                                         " />
                                                                         <While doFail="false" propagateChildFail="false" condition="$eatExpired == false &amp; $keepTrying">
                                                                             <Sequence>
+<Function_nebakovrising_receiver_conversation activityToken="$activityToken" nodeLabel="92000040" />
                                                                                 <Wait duration="'1s'" timeType="GameTime" doFail="false" />
                                                                                 <ExecuteLua code="&#10;
                                                                                     local castle = nebakovrising.CastleUtils&#10;
@@ -206,6 +218,7 @@
                                                                                 " />
                                                                             </Sequence>
                                                                         </While>
+<ExecuteLua code="if nebakovrising.Conversations then nebakovrising.Conversations.SetPatrolPose(entity, data.activityToken, nil) end" />
                                                                         <IfCondition failOnCondition="false" condition="$eatExpired">
                                                                             <Sequence>
                                                                                 <InstantSendMessageToNPC target="$mealWuid" type="'kettle:signal:onNPCEating'" values="user($this.id),bowl($mealBowlWuid)" />

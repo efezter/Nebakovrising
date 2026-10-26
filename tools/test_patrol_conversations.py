@@ -119,9 +119,10 @@ class LuaDirectorTests(unittest.TestCase):
         self.lua.execute((ROOT/'src/Scripts/mods/CastleUtils.lua').read_text('utf-8'))
         self.lua.execute(SETUP)
         self.lua.execute((ROOT/'src/Scripts/mods/nebakov_voice_bridge.lua').read_text('utf-8'))
+        self.lua.execute((ROOT/'src/Scripts/mods/nebakov_conversation_config.lua').read_text('utf-8'))
         self.lua.execute((ROOT/'src/Scripts/mods/nebakov_voice_face.lua').read_text('utf-8'))
         self.lua.execute((ROOT/'src/Scripts/mods/nebakov_conversations.lua').read_text('utf-8'))
-        self.lua.execute("C=nebakovrising.CastleUtils; B=nebakovrising.VoiceBridge; D=nebakovrising.Conversations; B.NewSession(); D.Start(); assert(D.Receive('peer',1,'heartbeat_ready',B.session,''))")
+        self.lua.execute("C=nebakovrising.CastleUtils; B=nebakovrising.VoiceBridge; D=nebakovrising.Conversations; B.NewSession(); D.Start(); assert(D.Receive('peer',1,'heartbeat_ready',B.session,''));D.SetPatrolPose(a,ta,'guard');D.SetPatrolPose(b,tb,'guard')")
 
     def start(self):
         self.lua.execute('assert(D.TryStart(true))')

@@ -1,4 +1,4 @@
--- Native game log -> external Python runtime; no Lua I/O/network or blocking work.
+-- Small overwritten snapshot when verified available; game log bootstrap/fallback.
 nebakovrising = nebakovrising or {}
 nebakovrising.VoiceBridge = nebakovrising.VoiceBridge or {}
 local Bridge = nebakovrising.VoiceBridge
@@ -138,6 +138,7 @@ function Bridge.Snapshot(event)
             forward_source = forwardOk and forwardSource or "unavailable" },
         capabilities = {
             log = System ~= nil and type(System.LogAlways) == "function",
+            file_io = type(io)=="table" and type(io.open)=="function",
             timer = Script ~= nil and type(Script.SetTimerForFunction) == "function",
             native_audio_trigger = triggerOk and hasTrigger or false,
             legacy_raw_wav_loader = Sound ~= nil and type(Sound.LoadSound) == "function",
@@ -146,16 +147,69 @@ function Bridge.Snapshot(event)
         director = nebakovrising.Conversations and nebakovrising.Conversations.Snapshot() or nil }
 end
 
+function Bridge.ConfigureTelemetry(path,confirm)
+    if type(path)~="string" or #path>1024 or path:find("[%z\1-\31]") then return false end
+    path=path:gsub("\\","/")
+    if not path:match("/nebakov_voice/telemetry%.json$") then return false end
+    if confirm then
+        if path~=Bridge.filePath or not Bridge.fileReady then return false end
+        if not Bridge.fileConfirmed then log("Telemetry channel=file (console packets disabled)") end
+        Bridge.fileConfirmed=true
+        return true
+    end
+    local keep=Bridge.fileConfirmed and Bridge.filePath==path
+    Bridge.filePath,Bridge.fileConfirmed=path,keep==true
+    Bridge.fileErrorLogged=false
+    return true
+end
+
+local function transportStatus()
+    return {mode=Bridge.fileConfirmed and "file" or "log",
+        file_status=Bridge.fileConfirmed and "confirmed" or Bridge.fileError and "unavailable"
+            or Bridge.filePath and "probing" or "not_requested",error=Bridge.fileError}
+end
+
+local function writeTelemetry(payload)
+    if #payload>16384 then return false,"telemetry packet exceeds size limit" end
+    if type(io)~="table" or type(io.open)~="function" then return false,"io.open unavailable" end
+    local ok,failure=pcall(function()
+        local stream,reason=io.open(Bridge.filePath,"w")
+        if not stream then error(reason or "telemetry file open failed") end
+        local wrote,result,why=pcall(stream.write,stream,payload.."\n")
+        local closed,closeResult,closeError=pcall(stream.close,stream)
+        if not wrote or not result or not closed or not closeResult then
+            error(tostring(why or closeError or result or "telemetry write failed"))
+        end
+    end)
+    return ok,not ok and tostring(failure):sub(1,180) or nil
+end
+
 function Bridge.NewSession()
     Bridge.Stop(true)
     session()
 end
 
 function Bridge.Emit(event)
-    if not System or type(System.LogAlways) ~= "function" then return false, "log_unavailable" end
     if not Bridge.session then session() end
-    Bridge.sequence = Bridge.sequence + 1
-    System.LogAlways(marker .. encode(Bridge.Snapshot(event)))
+    Bridge.sequence=Bridge.sequence+1
+    if Bridge.filePath and type(io)=="table" and type(io.open)=="function" then Bridge.fileError=nil end
+    local packet=Bridge.Snapshot(event)
+    packet.transport=transportStatus()
+    local payload=encode(packet)
+    if Bridge.filePath then
+        local ok,reason=writeTelemetry(payload)
+        Bridge.fileReady=ok
+        if ok and Bridge.fileConfirmed then return true end
+        if not ok then
+            Bridge.fileConfirmed=false;Bridge.fileError=reason
+            packet.transport=transportStatus();payload=encode(packet)
+            if not Bridge.fileErrorLogged then
+                Bridge.fileErrorLogged=true;log("File telemetry unavailable; retaining log transport: "..tostring(reason))
+            end
+        end
+    end
+    if not System or type(System.LogAlways)~="function" then return false,"log_unavailable" end
+    System.LogAlways(marker..payload)
     return true
 end
 

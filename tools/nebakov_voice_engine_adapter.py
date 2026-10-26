@@ -18,7 +18,7 @@ def safe_error(error):
     return detail[:400]
 
 
-def worker_main(commands, results, engine_dir: str):
+def worker_main(commands, results, engine_dir: str, prewarm=False):
     sys.path.insert(0, engine_dir)
     try:
         import conversation_engine as engine
@@ -27,8 +27,16 @@ def worker_main(commands, results, engine_dir: str):
         service = callable(getattr(engine, "render_with_chatterbox", None))
         if service:
             with urllib.request.urlopen("http://127.0.0.1:8765/health", timeout=5) as response:
-                if json.load(response).get("status") != "ready":
+                health = json.load(response)
+                if health.get("status") != "ready":
                     raise RuntimeError("NebakovVoice TTS service is not ready")
+            desired = os.environ.get("NEBAKOV_TTS_MODEL") or health.get("default_model", "turbo")
+            if prewarm and health.get("active_model") != desired:
+                print("[Bridge] Preparing existing TTS service model before conversations...", flush=True)
+                request = urllib.request.Request("http://127.0.0.1:8765/model/switch",
+                    data=json.dumps({"model":desired}).encode(),headers={"Content-Type":"application/json"},method="POST")
+                with urllib.request.urlopen(request,timeout=180) as response:
+                    if json.load(response).get("status")!="ok": raise RuntimeError("TTS model preparation failed")
             tts = None  # Model ownership stays entirely in the existing service.
         else:
             tts = engine.create_tts()
@@ -60,6 +68,8 @@ def worker_main(commands, results, engine_dir: str):
             document = {"location": "Nebakov Castle", "model": engine.GEMINI_MODEL,
                         "context": job["context"], "lines": manifest_lines,
                         "bridge_job_id": job["id"], "bridge_session": job["session"]}
+            if job.get("profile_id"):
+                document.update(profile_id=job["profile_id"], prompt_parameters=job.get("prompt_parameters"))
             temporary = folder / "conversation.json.tmp"
             temporary.write_text(json.dumps(document, indent=2, ensure_ascii=True), encoding="utf-8")
             manifest = folder / "conversation.json"

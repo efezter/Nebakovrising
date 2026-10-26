@@ -172,3 +172,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    from build_npc_names import build, build_localization
+    build(); build_localization()
