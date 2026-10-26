@@ -32,7 +32,7 @@ def main():
                 name=f'{i}.wav'
                 with wave.open(str(folder/name),'wb') as f:
                     f.setparams((1,2,24000,0,'NONE','not compressed'));f.writeframes(b'\0\0'*4800)
-                rows.append({'index':i,'speaker':'Marek' if i%2 else 'Hertl','audio_file':name})
+                rows.append({'index':i,'speaker':'Marek' if i%2 else 'Hertl','audio_file':name,'text':f'Hey, friend! Fixture line {i}.'})
             manifest=folder/'conversation.json';manifest.write_text(json.dumps({'lines':rows}))
         else:
             manifest=latest_manifest()
@@ -109,6 +109,10 @@ def main():
             assert lua.eval("D.active==nil and D.last.phase=='finished'")
             assert lua.eval("nebakovrising.VoiceFace.current==nil and #a.faceStarts+#b.faceStarts==4")
             assert len([e for e in events if e['event']=='control_ack' and e['kind']=='line_start' and e['accepted']])==4
+            spatial=[json.loads(s) for s in (folder/'audio_spatial.jsonl').read_text().splitlines()]
+            assert spatial and all(e['backend']['owns_sound'] for e in spatial)
+            assert not any(e['event']=='spatial_audio' for e in events)
+            assert 'spatial_audio' not in console.read_text('utf-8')
             if nearby:
                 assert all(not any(e[0] in {'move','turn','turn_started'} for e in d.events) for d in drivers)
             for path,digest in hashes.items():assert hashlib.sha256(path.read_bytes()).hexdigest()==digest

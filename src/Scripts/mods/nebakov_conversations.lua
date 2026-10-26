@@ -113,7 +113,7 @@ function D.IsEligible(entity,ownReservation)
         return run.phase=="patrol_wait" and not castle().PatrolShouldStop(entity)
     elseif activity=="meal" then
         return run.socialPose=="sit" and not castle().HasEatenMeal(entity)
-            and not castle().IsNpcSleepTime() and not castle().ActivityPhaseExpired(entity.this.id,run.token)
+            and not castle().IsNpcSleepTime(entity.this.id, true) and not castle().ActivityPhaseExpired(entity.this.id,run.token)
     elseif activity=="idle" then
         return castle().IsPostMealIdle(entity)
     end
@@ -155,6 +155,7 @@ function D.Finish(reason, success)
     local active = D.active
     if not active then return end
     if nebakovrising.VoiceFace then nebakovrising.VoiceFace.Stop(active.id) end
+    if nebakovrising.Subtitles then nebakovrising.Subtitles.Stop(active.id) end
     D.last = { id = active.id, phase = success and "finished" or "cancelled", reason = reason,
         behavior = active.behavior, arrived = active.arrived == true }
     D.nextAllowed = now() + (success and cfg().cooldownSeconds or 10)
@@ -493,7 +494,7 @@ end
 
 local validKinds = {heartbeat_ready=true, heartbeat_busy=true, audio_ready=true,
     playing=true, finished=true, cancel=true, error=true, line_start=true, line_end=true, voice_catalog=true, conversation_config=true, telemetry_probe=true, telemetry_confirm=true}
-function D.Receive(peer, seq, kind, session, conversation, line, duration)
+function D.Receive(peer, seq, kind, session, conversation, line, duration, text)
     -- A non-throwing LoadScript call does not prove a file was executed (it may
     -- return false or reuse a cached script). PollControl observes this counter.
     D.receiveCalls = (D.receiveCalls or 0)+1
@@ -534,9 +535,11 @@ function D.Receive(peer, seq, kind, session, conversation, line, duration)
                     local p = D.active.participants[line%2 == 1 and 1 or 2]
                     local face = nebakovrising.VoiceFace
                     if face then face.Start(entityFor(p), line%2 == 1 and "Marek" or "Hertl", conversation, line, duration) end
+                    if nebakovrising.Subtitles then nebakovrising.Subtitles.Start(entityFor(p),conversation,line,text,duration) end
                     D.active.speechLine, accepted = line, true
                 elseif kind == "line_end" and line == D.active.speechLine then
                     if nebakovrising.VoiceFace then nebakovrising.VoiceFace.Stop(conversation, line) end
+                    if nebakovrising.Subtitles then nebakovrising.Subtitles.Stop(conversation,line) end
                     accepted = true
                 end
             end
@@ -643,6 +646,7 @@ function D.Stop()
 end
 function D.OnGameplayStarted()
     if nebakovrising.VoiceFace then nebakovrising.VoiceFace.Stop() end
+    if nebakovrising.Subtitles then nebakovrising.Subtitles.Stop() end
     D.Stop()
     D.peer, D.ack, D.last, D.active = nil, nil, nil, nil
     D.readerMethod, D.readerPath, D.readerErrorLogged, D.controlIO, D.receiveCalls = nil, nil, nil, nil, 0

@@ -12,6 +12,7 @@ nebakovrising.Config = {
     debug  = true,
     prefix = "[nebakovrising]",
     bedBehaviorEnabled = true,
+    -- Legacy fallback; guard shift hours are configured in Config/routines.lua.
     npcSleepStartHour = 0,
     npcWakeHour = 8,
     -- Uyanma siralamasi: NPC'ler arasi rastgele gecikme (saniye).
@@ -42,7 +43,8 @@ nebakovrising.Config = {
         regionRadius = 250, regionExitRadius = 280, regionHeight = 80,
         randomMinSeconds = 120, randomMaxSeconds = 240,
         cooldownSeconds = 0, npcCooldownSeconds = 0,
-        approachDistance = 1.3, arrivalDistance = 1.8,
+        -- Move braking may stop short of the 1.3m target; accept a 2m meeting.
+        approachDistance = 1.3, arrivalDistance = 2,
         faceTimeout = 8,
         arrivalSettleSeconds = 2,
         preparationTimeout = 30, approachTimeout = 35, conversationTimeout = 150,
@@ -84,6 +86,9 @@ function Main.LoadModules()
     Script.ReloadScript("Scripts/mods/NpcInteraction.lua")
     Script.ReloadScript("Scripts/mods/Spawner.lua")
     Script.ReloadScript("Scripts/mods/CastleUtils.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_shifts.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_subtitles.lua")
+    Script.ReloadScript("Scripts/mods/nebakov_dice.lua")
     Script.ReloadScript("Scripts/mods/NpcNamesData.lua")
     Script.ReloadScript("Scripts/mods/nebakov_npc_names.lua")
     Script.ReloadScript("Scripts/mods/nebakov_voice_bridge.lua")
@@ -100,6 +105,10 @@ function Main.RegisterCommands()
     nebakovrising._cmdsRegistered = true
     System.AddCCommand("nebakovrising_status", "nebakovrising.Main.Status()", "nebakovrising durumunu yazdir")
     System.AddCCommand("nebakovrising_patrol_status", "nebakovrising.CastleUtils.LogPatrolStatus()", "Guard patrol atama durumunu yazdir")
+    System.AddCCommand("nebakovrising_shift_status", "nebakovrising.Shifts.LogStatus()", "Muhafiz vardiyalarini ve saatlerini yazdir")
+    System.AddCCommand("nebakov_subtitle_test", "nebakovrising.Subtitles.Test()", "Muhafizin ustunde 8 saniye yazi goster")
+    System.AddCCommand("nebakov_dice_status", "nebakovrising.Dice.Status()", "Ilk yemek sonrasi zar ciftinin durumunu yazdir")
+    System.AddCCommand("nebakov_dice_reset", "nebakovrising.Dice.Reset()", "Sonraki yemek sonrasi ilk iki bos muhafiz icin zar testini yeniden kur")
     for _, role in ipairs(nebakovrising.Roles.List()) do
         if role.command then
             System.AddCCommand(

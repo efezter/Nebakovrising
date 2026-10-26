@@ -13,8 +13,48 @@ function R.Apply(doc)
             or a<1 or b<a or b>86400 then return false end
         ranges[key]={minSeconds=a,maxSeconds=b}
     end
+    local schedules
+    if doc.shifts~=nil then
+        if type(doc.shifts)~="table" then return false end
+        schedules={}
+        for _,group in ipairs({"day","night"}) do
+            local t=doc.shifts[group]
+            if type(t)~="table" then return false end
+            local copy={}
+            for _,key in ipairs({"wakeHour","mealHour","sleepHour"}) do
+                local hour=t[key]
+                if type(hour)~="number" or hour~=hour or hour<0 or hour>=24 then return false end
+                copy[key]=hour
+            end
+            local work=(copy.mealHour-copy.wakeHour)%24
+            local awake=(copy.sleepHour-copy.wakeHour)%24
+            if work<=0 or awake<=work then return false end
+            schedules[group]=copy
+        end
+    end
+    local extras={}
+    local schemas={subtitles={enabled="bool",maxDistance={1,100},fontSize={0.2,4},height={0.5,4}},
+        dice={enabled="bool",firstPairOnly="bool",searchRadius={5,250},pairWaitSeconds={5,300},
+            approachTimeout={10,300},playSeconds={5,600}}}
+    for name,schema in pairs(schemas) do
+        local source=doc[name]
+        if source~=nil then
+            if type(source)~="table" then return false end
+            local copy={}
+            for key,rule in pairs(schema) do
+                local value=source[key]
+                if rule=="bool" then
+                    if type(value)~="boolean" then return false end
+                elseif type(value)~="number" or value~=value or value<rule[1] or value>rule[2] then return false end
+                copy[key]=value
+            end
+            extras[name]=copy
+        end
+    end
     R.ranges=ranges
     local cfg=nebakovrising.Config
+    for name,value in pairs(extras) do cfg[name]=value end
+    if schedules then cfg.shiftSchedules=schedules end
     cfg.wakeStaggerMin,cfg.wakeStaggerMax=ranges.wakeStagger.minSeconds,ranges.wakeStagger.maxSeconds
     cfg.eveningMealStaggerMin,cfg.eveningMealStaggerMax=ranges.eveningMealStagger.minSeconds,ranges.eveningMealStagger.maxSeconds
     return true

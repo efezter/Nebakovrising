@@ -140,7 +140,7 @@
                                                                     data.mealPos.z = position.z&#10;
                                                                     data.hasMealSource = true&#10;
                                                                     castle.SetBedWalkState(entity.this.id, 'walking_to_cauldron', data.activityToken)&#10;
-                                                                    castle.SetMealProgress(entity, 'walking_to_cauldron', data.activityToken)&#10;
+                                                                    castle.StartBreakfast(entity, data.activityToken)&#10;
                                                                     System.LogAlways('[nebakovrising] NPC kahvalti fireplace hedefi bulundu: ' .. tostring(wuid))&#10;
                                                                 else&#10;
                                                                     System.LogAlways('[nebakovrising] NPC kahvalti fireplace hedefi kullanilamiyor: ' .. tostring(ok and 'WUID/konum eksik' or fireplace))&#10;

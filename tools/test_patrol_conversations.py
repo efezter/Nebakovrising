@@ -23,7 +23,7 @@ dofile = function(path) error('Fixture has no loose script: ' .. path) end
 nebakovrising.Config.conversations = {
  enabled=true,searchRadius=20,playerExitRadius=30,regionCenter={x=0,y=0,z=0},
  regionRadius=100,regionExitRadius=110,regionHeight=30,randomMinSeconds=30,randomMaxSeconds=60,
- cooldownSeconds=120,npcCooldownSeconds=180,approachDistance=1.3,arrivalDistance=1.8,
+ cooldownSeconds=120,npcCooldownSeconds=180,approachDistance=1.3,arrivalDistance=2,
  preparationTimeout=30,approachTimeout=35,conversationTimeout=150,peerTimeout=12,patrolHeartbeatMaxAge=2.5}
 nebakovrising.Config.voiceBridge = {sampleIntervalMs=250}
 nebakovrising.Utils = {GetPlayer=function() return player end, Log=function(s) lines[#lines+1]=s end}
@@ -178,7 +178,7 @@ class LuaDirectorTests(unittest.TestCase):
     def test_move_completion_waits_for_braking_frame_before_confirming_arrival(self):
         self.start();self.prepare()
         self.lua.execute("""
-            e2.pos={x=e1.pos.x+1.889,y=e1.pos.y,z=e1.pos.z+0.127}
+            e2.pos={x=e1.pos.x+2.1,y=e1.pos.y,z=e1.pos.z+0.127}
             assert(D.Arrived(e2,p2.token));assert(D.active and not D.active.met)
             pending=timers[#timers].data
             assert(not D.Receive('peer',2,'playing',B.session,D.active.id))
@@ -186,10 +186,35 @@ class LuaDirectorTests(unittest.TestCase):
             assert(D.ConfirmArrival(pending));assert(D.active.met and not D.active.arrived)
         """)
 
+    def test_live_short_stop_accepts_meeting_but_still_requires_both_turns(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            assert(D.Receive('peer',2,'audio_ready',B.session,D.active.id))
+            e2.pos={x=e1.pos.x+1.83819,y=e1.pos.y,z=e1.pos.z}
+            assert(D.Arrived(e2,p2.token));assert(D.active.met and not D.active.arrived)
+            assert(not D.Receive('peer',3,'playing',B.session,D.active.id))
+            facePair();assert(D.Receive('peer',4,'playing',B.session,D.active.id))
+        """)
+
+    def test_two_metre_arrival_boundary_is_inclusive(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos={x=e1.pos.x+2,y=e1.pos.y,z=e1.pos.z}
+            assert(D.Arrived(e2,p2.token));assert(D.active.met and not D.active.arrived)
+        """)
+
+    def test_arrival_on_different_floor_is_still_rejected(self):
+        self.start();self.prepare()
+        self.lua.execute("""
+            e2.pos={x=e1.pos.x+0.5,y=e1.pos.y,z=e1.pos.z+1.6}
+            assert(not D.Arrived(e2,p2.token))
+            assert(D.active==nil and D.last.reason=='arrival_not_confirmed')
+        """)
+
     def test_arrival_settle_expiry_cancels_and_old_callback_cannot_change_new_scene(self):
         self.start();self.prepare()
         self.lua.execute("""
-            e2.pos={x=e1.pos.x+1.9,y=e1.pos.y,z=e1.pos.z}
+            e2.pos={x=e1.pos.x+2.05,y=e1.pos.y,z=e1.pos.z}
             assert(D.Arrived(e2,p2.token));pending=timers[#timers].data
             D.ConfirmArrival({generation=D.generation,id='old',token=p2.token})
             assert(D.active and not D.active.met)

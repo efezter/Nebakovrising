@@ -23,7 +23,17 @@ TOKEN = re.compile(r"[A-Za-z0-9_.:+-]{0,96}\Z")
 ACTIVE_PHASES = {"preparing_audio", "reserved", "approaching", "waiting_audio", "playing"}
 
 
-def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
+def subtitle_literal(text):
+    if not isinstance(text,str) or len(text)>800 or len(text.encode('utf-8'))>2400:
+        raise ValueError('Invalid subtitle text')
+    if any(ord(c)<32 and c not in '\n\r\t' for c in text):
+        raise ValueError('Invalid subtitle control character')
+    # Lua 5.1 has no JSON-style Unicode escapes. Fixed-width byte escapes are
+    # data-only, preserve UTF-8, and cannot close the generated string literal.
+    return '"'+''.join('\\%03d'%b for b in ' '.join(text.split()).encode('utf-8'))+'"'
+
+
+def command_source(peer, seq, kind, session, conversation, line=0, duration=0, text=''):
     if kind not in KINDS or type(seq) is not int or not 1 <= seq < 2**53:
         raise ValueError("Invalid control command")
     if any(not isinstance(s, str) or not TOKEN.fullmatch(s) for s in (peer, session, conversation)):
@@ -45,6 +55,8 @@ def command_source(peer, seq, kind, session, conversation, line=0, duration=0):
         if type(line) is not int or not 1 <= line <= 4 or type(duration) is not int or not 0 <= duration <= 100000:
             raise ValueError("Invalid speech line/duration")
         extra = ", %d, %d" % (line, duration)
+        if kind=='line_start' and text:
+            extra += ', '+subtitle_literal(text)
     return ("-- Generated NebakovVoice control packet; contains no dialogue code.\n"
             'nebakovrising.Conversations.Receive("%s", %d, "%s", "%s", "%s"%s)\n'
             % (peer, seq, kind, session, conversation, extra))
@@ -57,6 +69,7 @@ class CommandOutbox:
         self.session = None
         self.sequence = 0
         self.queue = deque()
+        self.line_texts = {}
         self.pending = None
         self.last_heartbeat = -100.0
         self.rejected = None
@@ -77,6 +90,7 @@ class CommandOutbox:
             self.session = packet["session"]
             self.pending = None
             self.queue.clear()
+            self.line_texts.clear()
             self.last_heartbeat = -100.0
             self.last_ack = None
             self.catalog_sent = False
@@ -104,9 +118,12 @@ class CommandOutbox:
                 self.rejected = self.pending["conversation"], self.pending["kind"]
             self.pending = None
 
-    def send(self, kind, conversation="", line=0, duration=0):
+    def send(self, kind, conversation="", line=0, duration=0, text=''):
         if kind not in KINDS:
             raise ValueError("Unknown control verb")
+        if kind=='line_start' and text:
+            subtitle_literal(text)
+            self.line_texts[(conversation,line)]=text
         entry = (kind, conversation, line, duration)
         if entry not in self.queue and not (self.pending and
                 (self.pending["kind"], self.pending["conversation"],
@@ -124,7 +141,8 @@ class CommandOutbox:
         temporary = self.path.with_name(self.path.name + f".{os.getpid()}.tmp")
         temporary.write_text(command_source(self.peer, message["seq"], message["kind"],
                                             self.session, message["conversation"],
-                                            message.get("line", 0), message.get("duration", 0)), encoding="utf-8")
+                                            message.get("line", 0), message.get("duration", 0),
+                                            self.line_texts.get((message['conversation'],message.get('line',0)),'')), encoding="utf-8")
         os.replace(temporary, self.path)
 
     def tick(self, now, ready):
@@ -200,7 +218,7 @@ class PatrolController:
         if ack and ack["kind"] == "line_start" and ack["conversation"] == self.conversation \
                 and ack.get("line") == line.index and ack["accepted"]:
             return True
-        self.outbox.send("line_start", self.conversation, line.index, math.ceil(line.seconds * 1000))
+        self.outbox.send("line_start", self.conversation, line.index, math.ceil(line.seconds * 1000), text=line.text)
         return False
 
     def finish_line(self, line):

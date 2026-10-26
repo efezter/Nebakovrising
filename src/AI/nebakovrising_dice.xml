@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<BehaviorTrees>
+    <BehaviorTree name="nebakovrising_post_meal_dice" is_function="1">
+        <Variables>
+            <Variable name="live" type="_bool" values="true" isPersistent="0" form="single" />
+            <Variable name="ready" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="usedNative" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="nativeSuccess" type="_bool" values="false" isPersistent="0" form="single" />
+            <Variable name="table" type="_wuid" values="" isPersistent="0" form="single" />
+            <Variable name="behavior" type="_string" values="" isPersistent="0" form="single" />
+        </Variables>
+        <Parameters>
+            <Variable name="activityToken" type="_int" values="0" isPersistent="0" form="single" requirementType="In" />
+        </Parameters>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <Sequence>
+                    <Parallel successMode="Any" failureMode="Any">
+                        <Function_nebakovrising_dice_watch activityToken="$activityToken" nodeLabel="94000001" />
+                        <While doFail="false" propagateChildFail="false" condition="$live">
+                            <Sequence>
+                                <ExecuteLua code="local plan=nebakovrising.Dice.Plan(entity,data.activityToken); data.live=plan~=nil; data.ready=plan~=nil and not plan.waiting; if data.ready then data.table=plan.target;data.behavior=plan.behavior end" />
+                                <IfCondition failOnCondition="false" condition="$ready">
+                                    <Sequence>
+                                        <ExecuteLua code="data.usedNative=true;data.nativeSuccess=false;nebakovrising.Dice.NativeBegin(entity,data.activityToken)" />
+                                        <SuppressFailure>
+                                            <Sequence>
+                                                <ReserveBehavior reserveFrom="$table" behaviorName="$behavior" saveVersion="2">
+                                                    <Search canSkip="1"><ReserveBehaviorSearch><Success /></ReserveBehaviorSearch></Search>
+                                                    <Exec canSkip="1"><CallBehavior Target="$table" BehaviorName="$behavior" ignoreDropUnloading="false" nodeLabel="94000002" /></Exec>
+                                                </ReserveBehavior>
+                                                <ExecuteLua code="data.nativeSuccess=true" />
+                                            </Sequence>
+                                        </SuppressFailure>
+                                        <ExecuteLua code="nebakovrising.Dice.NativeResult(entity,data.activityToken,data.nativeSuccess)" />
+                                    </Sequence>
+                                </IfCondition>
+                                <Wait duration="'500ms'" timeType="GameTime" doFail="false" />
+                            </Sequence>
+                        </While>
+                    </Parallel>
+                    <ExecuteLua code="nebakovrising.Dice.Leave(entity,data.activityToken)" />
+                    <IfCondition failOnCondition="false" condition="$usedNative">
+                        <Function_nebakovrising_stand activityToken="$activityToken" nodeLabel="94000003" />
+                    </IfCondition>
+                </Sequence>
+            </Behavior>
+        </Root>
+        <ForestContainer />
+        <EditorData EventSet=""><Variables /><ForwardDeclarations /></EditorData>
+    </BehaviorTree>
+    <BehaviorTree name="nebakovrising_dice_watch" is_function="1">
+        <Variables><Variable name="live" type="_bool" values="true" isPersistent="0" form="single" /></Variables>
+        <Parameters><Variable name="activityToken" type="_int" values="0" isPersistent="0" form="single" requirementType="In" /></Parameters>
+        <Root OneTimeOnly="false" FailState="Recoverable" saveVersion="2">
+            <Behavior canSkip="1">
+                <While doFail="false" propagateChildFail="false" condition="$live">
+                    <Sequence>
+                        <ExecuteLua code="data.live=nebakovrising.Dice.Alive(entity,data.activityToken)" />
+                        <Wait duration="'500ms'" timeType="GameTime" doFail="false" />
+                    </Sequence>
+                </While>
+            </Behavior>
+        </Root>
+        <ForestContainer />
+        <EditorData EventSet=""><Variables /><ForwardDeclarations /></EditorData>
+    </BehaviorTree>
+</BehaviorTrees>

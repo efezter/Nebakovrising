@@ -89,6 +89,8 @@ Patrol bekleme sayacı ilerlemez; yemek deadline'ının kalan süresi saklanıp 
 
 Daha uzaktaki iki sabit patrol guard'ı mevcut yaklaşma akışını kullanır. Yemek yiyen veya akşam idle durumundaki guard uzaktaysa koltuğundan/aktivitesinden kaldırılıp buluşturulmaz. Ses hazırlanırken patrol guard'ı normal rutininde hareket etmeye başlarsa eski konuşma iptal edilir.
 
+Yaklaşma hedefi 1,3 metre, varışı kabul etme sınırı 2 metredir. Native Move frenlemesi nedeniyle 1,83819 metrede duran çiftin eski 1,8 metre sınırında `arrival_not_confirmed` ile iptal edildiği oyun logunda doğrulandı. 2 metreyi aşan varışlarda kısa frenleme kontrolü ve iptal korunur; kat farkı kontrolü ve yaklaşmalı akıştaki karşılıklı native dönüş onayı da geçerlidir. Bu düzeltme için mod paketi yenilendikten sonra oyun yeniden başlatılmalı; Python/TTS değişikliği gerekmez.
+
 Prompt profilleri: patrol için `patrol-daily-talk`, en az biri yemek yiyorsa `meal-daily-talk`, diğer akşam bekleme çiftleri için `idle-daily-talk`. Gerçek isimler, iki NPC'nin doğrulanmış aktivitesi ve günün saati gönderilir. Hazırlama servisi/TTS algoritması değiştirilmedi. Mevcut `start_patrol_conversations.cmd` aynı başlatıcıdır; yeni config ve profilleri okumak için köprü yeniden başlatılmalıdır.
 
 Gerçek Lua/Python ve dummy audio ile hem yaklaşmalı hem yerinde dört satırlık akış test edildi. İki yemek BT'sinin koltukları koruduğu ve timer'ların devam ettiği de test edildi. Gerçek oyun animasyonları ve seçimlerin oyun içi doğrulaması ayrıca gereklidir.

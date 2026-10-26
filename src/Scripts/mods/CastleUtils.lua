@@ -41,6 +41,8 @@ CastleUtils.bedPools = CastleUtils.bedPools or {
         "smartObject[Bed/bed_low1_2bbd8cec-55ba-4034-bd0f-1785ff415b2d]",
         "smartObject[Bed/bed_low3_a01e9c19-d086-4728-ac1f-d26398043ba4]",
         "smartObject[Bed/bed_bench1_9d9d9e04-6c8e-46e3-b935-3afd2d105a4f]",
+        "smartObject[Bed/bed_low15_c072fca1-a7a1-44c3-a07d-c6a525af851b]",
+        "smartObject[Bed/bed_low16_159ba3c2-ffb5-4307-9bb1-a6d610f39ee7]",
         "smartObject[Bed/bed_low14_97e988b1-0af4-45d0-9422-6005851ec86b]",
         "smartObject[Bed.bed_high12_0a667690-a0f5-46b3-9dce-696023ce085e]",
         "smartObject[Bed.bed_high33_4370fd42-1455-43dd-9254-9915b0b83031]",
@@ -49,8 +51,6 @@ CastleUtils.bedPools = CastleUtils.bedPools or {
         "smartObject[Bed/bed_bench6_79674cf0-8bd5-4eee-b5eb-8e54c24b4e5a]",
         "smartObject[Bed.bed_low4_324c87a5-9307-46cb-8db7-f20b49ecf04d]",
         "smartObject[Bed.bed_low3_bd5fdb84-eb4f-44d4-a3a1-59d99ce8eb43]",
-        "smartObject[Bed/bed_low15_c072fca1-a7a1-44c3-a07d-c6a525af851b]",
-        "smartObject[Bed/bed_low16_159ba3c2-ffb5-4307-9bb1-a6d610f39ee7]",
         "smartObject[Bed/bed_bench3_3e5ca388-e284-4353-bb3a-4c97d3ab3168]",
     },
     servant = {},
@@ -73,6 +73,8 @@ CastleUtils.trackedBedCandidatesByWuid = CastleUtils.trackedBedCandidatesByWuid 
 CastleUtils.deathMonitorWarnings = CastleUtils.deathMonitorWarnings or {}
 CastleUtils.bedWalkStates = CastleUtils.bedWalkStates or {}
 CastleUtils.npcWakeSlots = CastleUtils.npcWakeSlots or {}
+CastleUtils.wakeBatches = CastleUtils.wakeBatches or {}
+CastleUtils.wakeSlotGroups = CastleUtils.wakeSlotGroups or {}
 CastleUtils.wakeUpSlotsAssigned = false
 CastleUtils.restoredNpcNames = CastleUtils.restoredNpcNames or {}
 CastleUtils._persistentStoreName = "nebakovrising_SaveStore"
@@ -215,6 +217,7 @@ function CastleUtils.SaveManagedNpc(entityName, bedSelector, preserveEquipment)
     if position then record.position = position end
     record.managed = true
     records[entityName] = record
+    if nebakovrising.Shifts then nebakovrising.Shifts.Reconcile() end
     if entity and nebakovrising.Names then nebakovrising.Names.Assign(entity) end
     log("NPC save kaydi guncellendi: " .. entityName
         .. ", bed=" .. tostring(record.bedSelector)
@@ -233,6 +236,10 @@ function CastleUtils.VoiceStore(create)
     return records,store.health.nebakovVoiceCatalog
 end
 
+function CastleUtils.ManagedRecords(create)
+    return getPersistentRecords(create)
+end
+
 function CastleUtils.GetManagedNpcRole(entityName)
     local records = getPersistentRecords(false)
     local record = records and records[entityName]
@@ -241,6 +248,7 @@ end
 
 function CastleUtils.SnapshotManagedNpcPositions()
     if nebakovrising.Voices then nebakovrising.Voices.Reconcile() end
+    if nebakovrising.Shifts then nebakovrising.Shifts.Reconcile() end
     if CastleUtils._restoreInProgress then
         Script.SetTimerForFunction(
             2000,
@@ -410,6 +418,7 @@ function CastleUtils.RemoveManagedNpcRecord(entityName)
         if run.npcKey == entityName then CastleUtils.activityRuns[key] = nil end
     end
     records[entityName] = nil
+    if nebakovrising.Shifts then nebakovrising.Shifts.Reconcile() end
     log("NPC save kaydi olum nedeniyle silindi: " .. entityName)
     return true
 end
@@ -489,16 +498,19 @@ function CastleUtils.GetSleepingNpcWuids()
 end
 
 -- Uyanma sirasini rastgele atar (bir kez cagrilir, idempotent)
-function CastleUtils.AssignWakeUpSlots()
-    if CastleUtils.wakeUpSlotsAssigned then return end
-    local sleeping = CastleUtils.GetSleepingNpcWuids()
+function CastleUtils.AssignWakeUpSlots(group)
+    if (group and CastleUtils.wakeBatches[group]) or (not group and CastleUtils.wakeUpSlotsAssigned) then return end
+    local sleeping = {}
+    for _,wuid in ipairs(CastleUtils.GetSleepingNpcWuids()) do
+        if not group or nebakovrising.Shifts.Get(wuid)==group then sleeping[#sleeping+1]=wuid end
+    end
     if #sleeping == 0 then
         log("[nebakovrising] Uyanma sirasi: yatan NPC bulunamadi.")
         return
     end
-    CastleUtils.wakeUpSlotsAssigned = true
+    if group then CastleUtils.wakeBatches[group]=true else CastleUtils.wakeUpSlotsAssigned=true end
 
-    -- Fisher-Yates shuffle → rastgele siralama
+    -- Fisher-Yates shuffle: rastgele siralama
     for i = #sleeping, 2, -1 do
         local j = math.random(i)
         sleeping[i], sleeping[j] = sleeping[j], sleeping[i]
@@ -511,6 +523,7 @@ function CastleUtils.AssignWakeUpSlots()
     local cursor = now
 
     for i, wuid in ipairs(sleeping) do
+        CastleUtils.wakeSlotGroups[tostring(wuid)]=group
         if i == 1 then
             CastleUtils.npcWakeSlots[tostring(wuid)] = now
         else
@@ -522,7 +535,9 @@ function CastleUtils.AssignWakeUpSlots()
     log("[nebakovrising] Uyanma sirasi atandi: " .. #sleeping .. " NPC, ilk=" .. tostring(sleeping[1]))
 end
 
-function CastleUtils.IsNpcSleepTime(npcWuid)
+-- scheduleOnly avoids scheduling wake waves from patrol/meal eligibility polls.
+-- The actual sleeping BT also waits for its assigned stagger slot.
+function CastleUtils.IsNpcSleepTime(npcWuid, scheduleOnly)
     if not Calendar or type(Calendar.GetWorldHourOfDay) ~= "function" then
         if not CastleUtils._sleepTimeApiWarningLogged then
             CastleUtils._sleepTimeApiWarningLogged = true
@@ -542,6 +557,12 @@ function CastleUtils.IsNpcSleepTime(npcWuid)
 
     local startHour = nebakovrising.Config and nebakovrising.Config.npcSleepStartHour
     local wakeHour = nebakovrising.Config and nebakovrising.Config.npcWakeHour
+    local group
+    if nebakovrising.Shifts then
+        local schedule
+        schedule,group=nebakovrising.Shifts.Schedule(npcWuid)
+        startHour,wakeHour=schedule.sleepHour,schedule.wakeHour
+    end
     if type(startHour) ~= "number" or type(wakeHour) ~= "number"
         or startHour < 0 or startHour >= 24
         or wakeHour < 0 or wakeHour >= 24
@@ -561,7 +582,12 @@ function CastleUtils.IsNpcSleepTime(npcWuid)
     end
 
     if inSleepWindow then
-        if CastleUtils.wakeUpSlotsAssigned then
+        if group and CastleUtils.wakeBatches[group] then
+            for key,owner in pairs(CastleUtils.wakeSlotGroups) do
+                if owner==group then CastleUtils.npcWakeSlots[key]=nil;CastleUtils.wakeSlotGroups[key]=nil end
+            end
+            CastleUtils.wakeBatches[group]=nil
+        elseif not group and CastleUtils.wakeUpSlotsAssigned then
             CastleUtils.npcWakeSlots={}
             CastleUtils.wakeUpSlotsAssigned=false
         end
@@ -569,12 +595,12 @@ function CastleUtils.IsNpcSleepTime(npcWuid)
     end
 
     -- Uyku penceresi bitti (saat >= wakeHour)
-    if npcWuid == nil then
+    if npcWuid == nil or scheduleOnly then
         return false, hour
     end
 
     -- Bu NPC'nin uyanma slotu kontrolu
-    CastleUtils.AssignWakeUpSlots()
+    CastleUtils.AssignWakeUpSlots(group)
     local slot = CastleUtils.npcWakeSlots[tostring(npcWuid)]
     if slot == nil then
         return false, hour
@@ -733,6 +759,16 @@ function CastleUtils.GetMealProgress(npc)
     local records = getPersistentRecords(false)
     local record = records and records[entityName]
     return type(record) == "table" and record.mealStage or nil
+end
+
+function CastleUtils.StartBreakfast(entity,token)
+    if not entity or not CastleUtils.OwnsNpcActivity(entity.this.id,token) then return false end
+    local records=getPersistentRecords(false)
+    local record=records and records[entity:GetName()]
+    if not record then return false end
+    record.mealKind="breakfast"
+    record.eveningMealDone=nil
+    return CastleUtils.SetMealProgress(entity,"walking_to_cauldron",token)
 end
 
 function CastleUtils.HasCollectedMeal(npc)
@@ -1077,8 +1113,10 @@ end
 
 function CastleUtils.FinishMeal(entity, token)
     if not CastleUtils.OwnsNpcActivity(entity.this.id, token) then return false end
+    local eaten=CastleUtils.HasEatenMeal(entity)
     CastleUtils.ReleaseMealBenchForNpc(entity.this.id)
     CastleUtils.SetMealProgress(entity, nil, token)
+    if eaten and nebakovrising.Dice then nebakovrising.Dice.Offer(entity,token) end
     return true
 end
 
@@ -1138,12 +1176,16 @@ function CastleUtils.MealSeatTimedOut(npcWuid, token)
     if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return true end
     local phase = CastleUtils.activityRuns[tostring(npcWuid)].phase
     return (phase == "seating" or phase == "seated")
-        and (CastleUtils.IsNpcSleepTime() or CastleUtils.ActivityPhaseExpired(npcWuid, token))
+        and (CastleUtils.IsNpcSleepTime(npcWuid, true) or CastleUtils.ActivityPhaseExpired(npcWuid, token))
 end
 
 function CastleUtils.FinishNpcActivity(npcWuid, token)
     if not CastleUtils.OwnsNpcActivity(npcWuid, token) then return false end
     if nebakovrising.Conversations then nebakovrising.Conversations.ActivityEnded(npcWuid, token) end
+    if nebakovrising.Dice then
+        local entity=XGenAIModule.GetEntityByWUID(npcWuid)
+        if entity then nebakovrising.Dice.Leave(entity,token) end
+    end
     CastleUtils.activityRuns[tostring(npcWuid)] = nil
     CastleUtils.SetBedWalkState(npcWuid, "idle")
     return true
@@ -1157,6 +1199,7 @@ function CastleUtils.FailNpcActivity(entity, token)
         CastleUtils.patrolBlocked[assignment.selector] = System.GetCurrTime() + 120
     end
     if nebakovrising.Conversations then nebakovrising.Conversations.ActivityEnded(entity.this.id, token) end
+    if nebakovrising.Dice then nebakovrising.Dice.Leave(entity,token) end
     -- Keep reservations until the next BT has physically stood up.
     log("Davranis kesildi: NPC=" .. run.npcKey .. ", tur=" .. run.kind
         .. ", asama=" .. tostring(run.phase) .. ", token=" .. token)
@@ -1204,8 +1247,12 @@ end
 
 function CastleUtils.IsPostMealIdle(entity)
     local record = entity and getMealRecord(getEntityKey(entity, entity.this.id), false)
-    local sleeping, hour = CastleUtils.IsNpcSleepTime()
+    local sleeping, hour = CastleUtils.IsNpcSleepTime(entity and entity.this.id, true)
     local mealHour = nebakovrising.Config.eveningMealHour
+    if nebakovrising.Shifts then
+        return record ~= nil and record.eveningMealDone == true and not sleeping
+            and type(hour)=="number" and nebakovrising.Shifts.AfterDuty(entity,hour)
+    end
     return record ~= nil and record.eveningMealDone == true and not sleeping
         and type(hour) == "number" and type(mealHour) == "number" and hour >= mealHour
 end
@@ -1229,7 +1276,7 @@ function CastleUtils.NextNpcActivity(entity)
         CastleUtils.activityRuns[key] = nil
         CastleUtils.SetBedWalkState(entity.this.id, "recovery_needed")
     end
-    local sleeping = CastleUtils.IsNpcSleepTime()
+    local sleeping = CastleUtils.IsNpcSleepTime(entity.this.id, true)
     local kind
     if sleeping then
         if CastleUtils.GetBedAssignment(entity.this.id) then kind = "sleep" end
@@ -1297,11 +1344,12 @@ local function purgeStalePatrolOwners()
 end
 
 local function countReadyGuards(roleId)
-    if CastleUtils.IsNpcSleepTime() then return 0 end
     local count = 0
-    for _, record in pairs(getPersistentRecords(false) or {}) do
+    for name, record in pairs(getPersistentRecords(false) or {}) do
+        local sleeping,hour=CastleUtils.IsNpcSleepTime(name, true)
         if type(record) == "table" and record.managed and record.role == roleId
-            and record.mealStage == nil then
+            and record.mealStage == nil and not sleeping
+            and not (nebakovrising.Shifts and hour and nebakovrising.Shifts.AfterDuty(name,hour)) then
             count = count + 1
         end
     end
@@ -1383,7 +1431,10 @@ end
 function CastleUtils.ReservePatrolPoints()
     local reserved = 0
     for entityName, record in pairs(getPersistentRecords(false) or {}) do
-        if type(record) == "table" and record.patrolSelector then
+        local sleeping,hour=CastleUtils.IsNpcSleepTime(entityName, true)
+        local offDuty=nebakovrising.Shifts and (sleeping
+            or (hour and nebakovrising.Shifts.AfterDuty(entityName,hour)))
+        if type(record) == "table" and record.patrolSelector and not offDuty then
             if CastleUtils.patrolOwners[record.patrolSelector] == nil then
                 CastleUtils.patrolOwners[record.patrolSelector] = entityName
                 reserved = reserved + 1
@@ -1415,7 +1466,7 @@ end
 
 -- Behavior tree cagirir: sonraki patrol noktasini (veya mevcut sabit noktayi) dondurur.
 function CastleUtils.AssignPatrolPoint(npcWuid)
-    if npcWuid == nil or CastleUtils.IsNpcSleepTime() then return nil end
+    if npcWuid == nil or CastleUtils.IsNpcSleepTime(npcWuid, true) then return nil end
     local npcKey = getMealNpcKey(npcWuid)
     local role = getPatrolRole(npcKey)
     if not role then return nil end
@@ -1498,15 +1549,21 @@ function CastleUtils.ShouldStartEveningMeal(entity)
     local cfg = nebakovrising.Config
     local npcKey = entity:GetName()
     local role = nebakovrising.Roles and nebakovrising.Roles.Resolve(npcKey)
-    if not role or not role.eveningMeal or type(cfg.eveningMealHour) ~= "number" then
+    if not role or not role.eveningMeal then
         return false
     end
     local record = getMealRecord(npcKey, false)
     if not record or not record.managed then return false end
 
-    local sleepTime, hour = CastleUtils.IsNpcSleepTime()
+    local sleepTime, hour = CastleUtils.IsNpcSleepTime(entity.this.id, true)
     if type(hour) ~= "number" then return false end
-    if hour < cfg.eveningMealHour then
+    local inMealWindow
+    if nebakovrising.Shifts then
+        inMealWindow=nebakovrising.Shifts.AfterDuty(entity,hour)
+    else
+        inMealWindow=type(cfg.eveningMealHour)=="number" and hour>=cfg.eveningMealHour
+    end
+    if not inMealWindow then
         record.eveningMealDone = nil
         CastleUtils.eveningMealSchedule[npcKey] = nil
         return false
@@ -1544,7 +1601,7 @@ function CastleUtils.MarkEveningMealEaten(entity)
 end
 
 function CastleUtils.PatrolShouldStop(entity)
-    local stop = CastleUtils.IsNpcSleepTime() or (entity ~= nil
+    local stop = CastleUtils.IsNpcSleepTime(entity and entity.this.id, true) or (entity ~= nil
         and (CastleUtils.GetMealProgress(entity) ~= nil or CastleUtils.IsPostMealIdle(entity)))
     if stop and entity and entity.this then
         local run = CastleUtils.activityRuns[tostring(entity.this.id)]
@@ -1559,7 +1616,7 @@ end
 function CastleUtils.ShouldStartPatrol(entity)
     if not entity or not entity.this then return false end
     local npcKey = getMealNpcKey(entity.this.id)
-    if not getPatrolRole(npcKey) or CastleUtils.IsNpcSleepTime()
+    if not getPatrolRole(npcKey) or CastleUtils.IsNpcSleepTime(entity.this.id, true)
         or CastleUtils.IsPostMealIdle(entity) or CastleUtils.GetMealProgress(entity) ~= nil then
         return false
     end
@@ -1800,6 +1857,10 @@ function CastleUtils.AssignBedToNpc(npc, poolName)
 end
 
 function CastleUtils.ResetBedAssignments()
+    CastleUtils.npcWakeSlots={}
+    CastleUtils.wakeSlotGroups={}
+    CastleUtils.wakeBatches={}
+    CastleUtils.wakeUpSlotsAssigned=false
     CastleUtils.bedOwners = {}
     CastleUtils.bedAssignments = {}
     CastleUtils.bedAssignmentsByWuid = {}
@@ -2165,6 +2226,7 @@ function CastleUtils.RestoreManagedNpcs(attemptsLeft)
     else
         CastleUtils._restoreInProgress = false
     end
+    if nebakovrising.Shifts then nebakovrising.Shifts.Reconcile() end
 end
 
 function CastleUtils.TrackBedOwner(npc, entityName)
@@ -2637,6 +2699,8 @@ function CastleUtils.AssignPlayerChest()
 end
 
 function CastleUtils.OnGameplayStarted()
+    if nebakovrising.Dice then nebakovrising.Dice.Reset() end
+    if nebakovrising.Subtitles then nebakovrising.Subtitles.Stop() end
     if nebakovrising.Names then nebakovrising.Names.pending={} end
     if nebakovrising.Routines then nebakovrising.Routines.Load() end
     if nebakovrising.Voices then nebakovrising.Voices.Reset() end
@@ -2649,6 +2713,11 @@ function CastleUtils.OnGameplayStarted()
         end
     end
     CastleUtils.ResetBedAssignments()
+    if nebakovrising.Shifts then
+        nebakovrising.Shifts.assignments={}
+        CastleUtils._restoreInProgress=false
+        nebakovrising.Shifts.Reconcile()
+    end
     CastleUtils.restoredNpcNames = {}
     CastleUtils._restoreInProgress = true
     CastleUtils.RefreshBeds()

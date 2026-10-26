@@ -129,6 +129,7 @@
     </BehaviorTree>
     <BehaviorTree name="nebakovrising_meal_at_table" is_function="1">
         <Variables>
+            <Variable name="tryDice" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="hasTargets" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="finished" type="_bool" values="false" isPersistent="0" form="single" />
             <Variable name="keepTrying" type="_bool" values="false" isPersistent="0" form="single" />
@@ -150,7 +151,7 @@
                         local castle = nebakovrising.CastleUtils&#10;
                         castle.ReleasePatrolAfterStanding(entity.this.id, data.activityToken)&#10;
                         data.finished = castle.HasEatenMeal(entity)&#10;
-                        data.keepTrying = not castle.IsNpcSleepTime()&#10;
+                        data.keepTrying = not castle.IsNpcSleepTime(entity.this.id, true)&#10;
                     " />
                     <While doFail="false" propagateChildFail="true" condition="$finished == false &amp; $keepTrying">
                         <Sequence>
@@ -214,7 +215,7 @@
                                                                                 <ExecuteLua code="&#10;
                                                                                     local castle = nebakovrising.CastleUtils&#10;
                                                                                     data.eatExpired = castle.ActivityPhaseExpired(entity.this.id, data.activityToken)&#10;
-                                                                                    data.keepTrying = not castle.IsNpcSleepTime()&#10;
+                                                                                    data.keepTrying = not castle.IsNpcSleepTime(entity.this.id, true)&#10;
                                                                                 " />
                                                                             </Sequence>
                                                                         </While>
@@ -267,7 +268,7 @@
                                 </Else>
                             </IfElseCondition>
                             <ExecuteLua code="&#10;
-                                data.keepTrying = not nebakovrising.CastleUtils.IsNpcSleepTime()&#10;
+                                data.keepTrying = not nebakovrising.CastleUtils.IsNpcSleepTime(entity.this.id, true)&#10;
                             " />
                         </Sequence>
                     </While>
@@ -275,6 +276,10 @@
                     <ExecuteLua code="&#10;
                         nebakovrising.CastleUtils.FinishMeal(entity, data.activityToken)&#10;
                     " />
+                    <ExecuteLua code="data.tryDice=nebakovrising.Dice and nebakovrising.Dice.HasRequest(entity,data.activityToken)==true or false" />
+                    <IfCondition failOnCondition="false" condition="$tryDice">
+                        <Function_nebakovrising_post_meal_dice activityToken="$activityToken" nodeLabel="94000004" />
+                    </IfCondition>
                     <Function_nebakovrising_post_meal_idle activityToken="$activityToken" nodeLabel="91000004" />
                 </Sequence>
             </Behavior>

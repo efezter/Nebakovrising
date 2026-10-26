@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import wave
+import time
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,8 @@ class PygameAudio:
             raise RuntimeError("Stereo mixer conversion failed")
         self.channel.set_volume(*gains)
         self.channel.play(self.sound)
+        # pygame documents channel volume reset on play; reapply afterwards too.
+        self.channel.set_volume(*gains)
 
     def update(self, gains):
         self.channel.set_volume(*gains)
@@ -104,6 +107,13 @@ class PygameAudio:
     def stop(self):
         self.channel.stop()
         self.sound = None
+
+    def diagnostics(self):
+        return {'backend':'pygame','channel':0,'mixer':self.pg.mixer.get_init(),
+                'busy':bool(self.channel.get_busy()),
+                'owns_sound':self.channel.get_sound() is self.sound,
+                'channel_scalar_volume':self.channel.get_volume(),
+                'sound_volume':self.sound.get_volume() if self.sound else None}
 
     def close(self):
         self.stop()
@@ -118,6 +128,7 @@ class SequentialPlayback:
         self.current = None
         self.before_line = None
         self.after_line = None
+        self.next_diagnostic = 0
 
     def start(self, manifest: Path):
         self.stop()
@@ -150,4 +161,15 @@ class SequentialPlayback:
                       seconds=self.current.seconds, entity_name=npc["entity_name"])
         else:
             self.audio.update(gains)
+        now=time.monotonic()
+        if starting or now>=self.next_diagnostic:
+            self.next_diagnostic=now+0.5
+            distance=math.dist([npc['position'][k] for k in 'xyz'],[player['position'][k] for k in 'xyz'])
+            describe=getattr(self.audio,'diagnostics',None)
+            self.emit('spatial_audio',session=packet.get('session'),seq=packet.get('seq'),
+                game_time=packet.get('game_time'),line=self.current.index,speaker=self.current.speaker,
+                entity_name=npc['entity_name'],audio_file=str(self.current.path),
+                distance=round(distance,3),left=round(gains[0],4),right=round(gains[1],4),
+                npc_position=npc['position'],player_position=player['position'],
+                backend=describe() if describe else {'backend':type(self.audio).__name__})
         return True

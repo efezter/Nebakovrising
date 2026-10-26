@@ -35,7 +35,7 @@ end
 local function point(name) return "smartObject[" .. name .. "]" end
 
 local meleePatrol = {
-    waitMin = 10,
+    waitMin = 30,
     waitMax = 180,
     fixed = {
         point("profession/guard/guardPoint_normal27_5ba34321-f9c2-45d3-a881-bd6e32b0cd32"),
@@ -74,7 +74,7 @@ local meleePatrol = {
 
 local rangedPatrol = {
     waitMin = 10,
-    waitMax = 180,
+    waitMax = 20,
     crossbow = true,
     fixed = {
         point("profession/guard/guardPoint_normal19_dbd8a54b-72fd-43a7-ae51-27a7c7dcb92e"),

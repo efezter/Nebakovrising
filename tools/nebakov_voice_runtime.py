@@ -325,10 +325,15 @@ def run(args, config, preset):
     worker, audio, controller = None, None, None
     # Instance lock is global to the engine directory even with different output dirs.
     with InstanceLock(args.engine_dir / "nebakov_voice_runtime.lock"), \
-            BoundedJournal(args.output_dir / "bridge_events.jsonl") as journal:
+            BoundedJournal(args.output_dir / "bridge_events.jsonl") as journal, \
+            BoundedJournal(args.output_dir / "audio_spatial.jsonl",max_bytes=256*1024,backups=1) as audio_journal:
         completed = False
         def emit(event, **fields):
             nonlocal completed
+            if event=='spatial_audio':
+                audio_journal.write(json.dumps({'at':datetime.now(timezone.utc).isoformat(),
+                    'event':event,**fields},ensure_ascii=True,allow_nan=False)+'\n')
+                return  # Diagnostic file only, never the console or event journal.
             if event == 'telemetry' or (event in {'control_sent', 'control_ack'}
                     and fields.get('kind', '').startswith('heartbeat_')):
                 return

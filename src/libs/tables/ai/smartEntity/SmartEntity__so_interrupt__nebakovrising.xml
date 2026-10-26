@@ -3,6 +3,12 @@
     <SmartEntitys version="1">
         <SmartEntityTemplate BrainId="ea3ff907-6743-4ad4-8723-2c14ac2a01f0" DatabaseId="43c857b4-032b-844f-3d1b-3cc90d5a2382" Name="so_interrupt">
             <BehaviorTemplates>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_post_meal_dice">
+                    <TreeLocation FileName="nebakovrising_dice.xml" TreeName="nebakovrising_post_meal_dice" />
+                </SmartBehaviorTemplate>
+                <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_dice_watch">
+                    <TreeLocation FileName="nebakovrising_dice.xml" TreeName="nebakovrising_dice_watch" />
+                </SmartBehaviorTemplate>
                 <SmartBehaviorTemplate InitialState="Enabled" MaxInstances="-1" Name="nebakovrising_walk_to_bed" PreventsMonsterLod="true">
                     <TreeLocation FileName="nebakovrising_walk_to_bed.xml" TreeName="nebakovrising_walk_to_bed" />
                     <Inboxes>
